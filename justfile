@@ -20,7 +20,7 @@ check:
 [group: 'check']
 ci: test clippy forbid
   cargo +nightly fmt --all -- --check
-  cargo update --locked --package null
+  cargo update --locked --package spy
 
 [group: 'check']
 clippy:
@@ -40,7 +40,7 @@ forbid:
 
 [group: 'misc']
 install:
-  cargo install -f null
+  cargo install -f spy
 
 [group: 'dev']
 install-dev-deps:
@@ -53,7 +53,7 @@ publish:
   #!/usr/bin/env bash
   set -euxo pipefail
   rm -rf tmp/release
-  gh repo clone https://github.com/terror/null tmp/release
+  gh repo clone https://github.com/terror/spy tmp/release
   cd tmp/release
   VERSION=`sed -En 's/version[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' Cargo.toml | head -1`
   git tag -a $VERSION -m "Release $VERSION"
