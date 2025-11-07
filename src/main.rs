@@ -30,14 +30,14 @@ fn restore_terminal(
   Ok(())
 }
 
-async fn run() -> Result {
+fn run() -> Result {
   let mut terminal = initialize_terminal()?;
   restore_terminal(&mut terminal)
 }
 
 #[tokio::main]
 async fn main() {
-  if let Err(error) = run().await {
+  if let Err(error) = run() {
     let use_color = io::stderr().is_terminal();
 
     if use_color {
