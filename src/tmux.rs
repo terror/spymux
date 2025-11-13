@@ -46,7 +46,8 @@ impl Tmux {
   }
 
   pub(crate) fn exclude_pane_id(&mut self, pane_id: &str) {
-    self.excluded_pane_ids.push(pane_id.to_string())
+    self.panes.retain(|pane| pane.tmux_pane_id != pane_id);
+    self.excluded_pane_ids.push(pane_id.to_string());
   }
 
   pub(crate) fn new(config: Config) -> Self {

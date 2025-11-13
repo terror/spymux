@@ -146,7 +146,7 @@ impl App {
 
     let mut tmux = Tmux::new(config);
 
-    if let Some(pane_id) = env::var("TMUX_PANE").ok() {
+    if let Ok(pane_id) = env::var("TMUX_PANE") {
       tmux.exclude_pane_id(&pane_id);
     }
 
