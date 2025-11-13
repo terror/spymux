@@ -12,7 +12,8 @@ use {
   ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    widgets::{Block, Borders, List, ListItem},
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders, Paragraph, Wrap},
   },
   std::{
     backtrace::BacktraceStatus,
