@@ -7,7 +7,11 @@ use {
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
   pane::Pane,
-  ratatui::{Terminal, backend::CrosstermBackend},
+  ratatui::{
+    Terminal,
+    backend::CrosstermBackend,
+    widgets::{Block, Borders, List, ListItem},
+  },
   std::{
     backtrace::BacktraceStatus,
     io::{self, IsTerminal, Stdout},
@@ -24,7 +28,40 @@ mod terminal_guard;
 mod tmux;
 
 fn run() -> Result {
-  let _terminal = TerminalGuard::new()?;
+  let mut terminal = TerminalGuard::new()?;
+  let tmux = tmux::Tmux::capture()?;
+  render_tmux_panes(terminal.terminal_mut(), tmux.panes())
+}
+
+fn render_tmux_panes(
+  terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+  panes: &[Pane],
+) -> Result {
+  terminal.draw(|frame| {
+    let items: Vec<ListItem> = if panes.is_empty() {
+      vec![ListItem::new("No tmux panes detected")]
+    } else {
+      panes
+        .iter()
+        .map(|pane| {
+          let preview = pane
+            .content
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .map(|line| line.trim().to_string())
+            .unwrap_or_else(|| "(empty pane)".to_string());
+
+          ListItem::new(format!("{} | {preview}", pane.id))
+        })
+        .collect()
+    };
+
+    let list = List::new(items)
+      .block(Block::default().title("tmux panes").borders(Borders::ALL));
+
+    frame.render_widget(list, frame.area());
+  })?;
+
   Ok(())
 }
 

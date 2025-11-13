@@ -1,13 +1,4 @@
-use super::*;
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Pane {
-  pub content: String,
-  pub id: String,
-  pub pane_index: usize,
-  pub session: String,
-  pub window: usize,
-}
+use {super::*, crate::pane::Pane};
 
 #[derive(Debug)]
 pub(crate) struct Tmux {
@@ -17,6 +8,10 @@ pub(crate) struct Tmux {
 impl Tmux {
   pub(crate) fn capture() -> Result<Self> {
     Self::capture_with_runner(&TmuxCommandRunner)
+  }
+
+  pub(crate) fn panes(&self) -> &[Pane] {
+    &self.panes
   }
 
   fn capture_with_runner(runner: &dyn CommandRunner) -> Result<Self> {
