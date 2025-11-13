@@ -7,6 +7,43 @@ pub(crate) struct App {
 }
 
 impl App {
+  fn clip_to_bottom(content: &str, max_lines: usize) -> String {
+    if max_lines == 0 {
+      return String::new();
+    }
+
+    let bytes = content.as_bytes();
+
+    let mut scan_end = bytes.len();
+
+    while scan_end > 0 && bytes[scan_end - 1] == b'\n' {
+      scan_end -= 1;
+    }
+
+    let mut lines_seen = 1usize;
+    let mut start = 0usize;
+    let mut i = scan_end;
+
+    while i > 0 {
+      i -= 1;
+
+      if bytes[i] == b'\n' {
+        lines_seen += 1;
+
+        if lines_seen > max_lines {
+          start = i + 1;
+          break;
+        }
+      }
+    }
+
+    if lines_seen <= max_lines {
+      return content.to_string();
+    }
+
+    content[start..].to_string()
+  }
+
   pub(crate) fn new() -> Result<Self> {
     let terminal = TerminalGuard::new()?;
 
@@ -78,7 +115,14 @@ impl App {
         }
 
         for (pane, pane_area) in self.tmux.panes.iter().zip(pane_areas) {
-          let widget = Paragraph::new(pane.content.clone())
+          let inner_height = pane_area.height.saturating_sub(2).max(1);
+
+          let visible_lines = usize::from(inner_height);
+
+          let clipped_content =
+            Self::clip_to_bottom(&pane.content, visible_lines);
+
+          let widget = Paragraph::new(clipped_content)
             .wrap(Wrap { trim: false })
             .block(
               Block::default()
@@ -99,5 +143,34 @@ impl App {
     }
 
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::App;
+
+  #[test]
+  fn clip_to_bottom_returns_all_when_shorter() {
+    let content = "line1\nline2";
+    assert_eq!(App::clip_to_bottom(content, 5), content);
+  }
+
+  #[test]
+  fn clip_to_bottom_limits_to_requested_lines() {
+    assert_eq!(
+      App::clip_to_bottom("line1\nline2\nline3\nline4", 2),
+      "line3\nline4"
+    );
+  }
+
+  #[test]
+  fn clip_to_bottom_handles_trailing_newlines() {
+    assert_eq!(App::clip_to_bottom("line1\nline2\n", 1), "line2\n");
+  }
+
+  #[test]
+  fn clip_to_bottom_with_zero_lines_returns_empty() {
+    assert_eq!(App::clip_to_bottom("line1\nline2", 0), "");
   }
 }
