@@ -67,7 +67,7 @@ impl Tmux {
     );
 
     let content_output =
-      runner.run(&["capture-pane", "-t", descriptor, "-p"])?;
+      runner.run(&["capture-pane", "-t", descriptor, "-p", "-e"])?;
 
     if !content_output.status.success() {
       bail!("failed to capture pane output");

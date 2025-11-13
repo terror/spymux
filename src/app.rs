@@ -1,4 +1,10 @@
-use super::*;
+use {
+  super::*,
+  ansi_to_tui::IntoText,
+  ratatui::text::{Line, Text},
+  std::borrow::Cow,
+  unicode_width::UnicodeWidthChar,
+};
 
 #[derive(Debug)]
 pub(crate) struct App {
@@ -25,62 +31,123 @@ impl App {
     content: &str,
     max_lines: usize,
     max_columns: usize,
-  ) -> String {
+  ) -> Text<'static> {
     if max_lines == 0 || max_columns == 0 || content.is_empty() {
-      return String::new();
+      return Text::default();
     }
 
-    let bytes = content.as_bytes();
+    let parsed_text = content
+      .into_text()
+      .unwrap_or_else(|_| Text::raw(content.to_string()));
 
-    let mut render_end = bytes.len();
+    let renderable_lines = Self::renderable_line_count(&parsed_text);
 
-    while render_end > 0 && bytes[render_end - 1] == b'\n' {
-      render_end -= 1;
+    if renderable_lines == 0 {
+      return parsed_text;
     }
 
-    if render_end == 0 {
-      return content.to_string();
+    let row_starts =
+      Self::collect_row_starts(&parsed_text, max_columns, renderable_lines);
+
+    if row_starts.len() <= max_lines {
+      return parsed_text;
     }
 
-    let mut row_starts = vec![0usize];
-    let mut total_rows = 1usize;
+    let rows_to_skip = row_starts.len().saturating_sub(max_lines);
+
+    let start_cursor = row_starts
+      .get(rows_to_skip)
+      .copied()
+      .unwrap_or_else(RowCursor::default);
+
+    Self::slice_text_from(&parsed_text, start_cursor)
+  }
+
+  fn collect_row_starts(
+    text: &Text<'static>,
+    max_columns: usize,
+    line_limit: usize,
+  ) -> Vec<RowCursor> {
+    let mut starts = Vec::new();
+
+    if line_limit == 0 {
+      return starts;
+    }
+
+    starts.push(RowCursor {
+      byte_index: 0,
+      line_index: 0,
+      span_index: 0,
+    });
+
     let mut current_width = 0usize;
 
-    for (idx, ch) in content.char_indices() {
-      if idx >= render_end {
-        break;
-      }
+    for line_index in 0..line_limit {
+      let line = &text.lines[line_index];
 
-      if ch == '\n' {
+      if line.spans.is_empty() {
         current_width = 0;
-        total_rows += 1;
-        row_starts.push(idx + ch.len_utf8());
+
+        if line_index + 1 < line_limit {
+          starts.push(RowCursor {
+            byte_index: 0,
+            line_index: line_index + 1,
+            span_index: 0,
+          });
+        }
+
         continue;
       }
 
-      let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+      for (span_index, span) in line.spans.iter().enumerate() {
+        let mut byte_index = 0usize;
 
-      if ch_width == 0 {
-        continue;
+        let content = span.content.as_ref();
+
+        for ch in content.chars() {
+          let ch_len = ch.len_utf8();
+
+          let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+
+          if ch_width > 0
+            && current_width > 0
+            && current_width.saturating_add(ch_width) > max_columns
+          {
+            starts.push(RowCursor {
+              byte_index,
+              line_index,
+              span_index,
+            });
+
+            current_width = 0;
+          }
+
+          byte_index += ch_len;
+
+          current_width = current_width.saturating_add(ch_width);
+        }
       }
 
-      if current_width.saturating_add(ch_width) > max_columns {
-        current_width = 0;
-        total_rows += 1;
-        row_starts.push(idx);
+      current_width = 0;
+
+      if line_index + 1 < line_limit {
+        starts.push(RowCursor {
+          byte_index: 0,
+          line_index: line_index + 1,
+          span_index: 0,
+        });
       }
-
-      current_width += ch_width;
     }
 
-    if total_rows <= max_lines {
-      return content.to_string();
+    starts
+  }
+
+  fn line_is_empty(line: &Line<'_>) -> bool {
+    if line.spans.is_empty() {
+      return true;
     }
 
-    let rows_to_skip = total_rows - max_lines;
-    let start_index = *row_starts.get(rows_to_skip).unwrap_or(&render_end);
-
-    content[start_index..].to_string()
+    line.spans.iter().all(|span| span.content.is_empty())
   }
 
   pub(crate) fn new() -> Result<Self> {
@@ -100,6 +167,16 @@ impl App {
     self.tmux = Self::capture_tmux(self.current_pane_id.as_deref())?;
     self.last_refresh = Instant::now();
     Ok(())
+  }
+
+  fn renderable_line_count(text: &Text<'static>) -> usize {
+    let mut end = text.lines.len();
+
+    while end > 0 && Self::line_is_empty(&text.lines[end - 1]) {
+      end -= 1;
+    }
+
+    end
   }
 
   pub(crate) fn run(mut self) -> Result {
@@ -201,46 +278,141 @@ impl App {
 
     Ok(())
   }
+
+  fn slice_text_from(text: &Text<'static>, cursor: RowCursor) -> Text<'static> {
+    let mut lines = Vec::new();
+
+    for (line_index, line) in
+      text.lines.iter().enumerate().skip(cursor.line_index)
+    {
+      let mut new_line = Line {
+        style: line.style,
+        alignment: line.alignment,
+        spans: Vec::new(),
+      };
+
+      if line.spans.is_empty() {
+        lines.push(new_line);
+        continue;
+      }
+
+      let start_span = if line_index == cursor.line_index {
+        cursor.span_index.min(line.spans.len())
+      } else {
+        0
+      };
+
+      for (span_index, span) in line.spans.iter().enumerate().skip(start_span) {
+        let mut new_span = span.clone();
+
+        if line_index == cursor.line_index && span_index == cursor.span_index {
+          let source = span.content.as_ref();
+
+          if cursor.byte_index >= source.len() {
+            continue;
+          }
+
+          new_span.content =
+            Cow::Owned(source[cursor.byte_index..].to_string());
+        }
+
+        if new_span.content.is_empty() {
+          continue;
+        }
+
+        new_line.spans.push(new_span);
+      }
+
+      lines.push(new_line);
+    }
+
+    Text {
+      alignment: text.alignment,
+      style: text.style,
+      lines,
+    }
+  }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct RowCursor {
+  byte_index: usize,
+  line_index: usize,
+  span_index: usize,
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use {
+    super::*,
+    ratatui::{
+      style::{Color, Style},
+      text::Span,
+    },
+  };
 
   #[test]
   fn clip_to_bottom_returns_all_when_shorter() {
     let content = "line1\nline2";
-    assert_eq!(App::clip_to_bottom(content, 5, 80), content);
+    assert_eq!(
+      App::clip_to_bottom(content, 5, 80),
+      Text::raw(content.to_string())
+    );
   }
 
   #[test]
   fn clip_to_bottom_limits_to_requested_lines() {
     assert_eq!(
       App::clip_to_bottom("line1\nline2\nline3\nline4", 2, 80),
-      "line3\nline4"
+      Text::raw("line3\nline4".to_string())
     );
   }
 
   #[test]
   fn clip_to_bottom_handles_trailing_newlines() {
-    assert_eq!(App::clip_to_bottom("line1\nline2\n", 1, 80), "line2\n");
+    assert_eq!(
+      App::clip_to_bottom("line1\nline2\n", 1, 80),
+      Text::raw("line2\n")
+    );
   }
 
   #[test]
   fn clip_to_bottom_with_zero_lines_returns_empty() {
-    assert_eq!(App::clip_to_bottom("line1\nline2", 0, 80), "");
+    assert_eq!(App::clip_to_bottom("line1\nline2", 0, 80), Text::default());
   }
 
   #[test]
   fn clip_to_bottom_truncates_wrapped_lines() {
     assert_eq!(
       App::clip_to_bottom("1234567890abcdefghij", 2, 5),
-      "abcdefghij"
+      Text::raw("abcdefghij".to_string())
     );
   }
 
   #[test]
   fn clip_to_bottom_with_zero_columns_returns_empty() {
-    assert_eq!(App::clip_to_bottom("line1\nline2", 5, 0), "");
+    assert_eq!(App::clip_to_bottom("line1\nline2", 5, 0), Text::default());
+  }
+
+  #[test]
+  fn clip_to_bottom_preserves_color_in_wrapped_line() {
+    let clipped = App::clip_to_bottom("\x1b[31mAAAAA\x1b[0m", 1, 2);
+
+    let expected = Text::from(Line::from(Span::styled(
+      "A",
+      Style::default().fg(Color::Red),
+    )));
+
+    assert_eq!(clipped, expected);
+  }
+
+  #[test]
+  fn clip_to_bottom_resets_styles_when_previous_lines_trimmed() {
+    let clipped = App::clip_to_bottom("\x1b[32mline1\x1b[0m\nline2", 1, 80);
+
+    let expected =
+      Text::from(Line::from(Span::styled("line2", Style::reset())));
+
+    assert_eq!(clipped, expected);
   }
 }
