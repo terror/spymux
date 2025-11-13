@@ -14,6 +14,38 @@ use {
 
 type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
+struct TerminalGuard {
+  terminal: Terminal<CrosstermBackend<Stdout>>,
+}
+
+impl TerminalGuard {
+  fn new() -> Result<Self> {
+    Ok(Self {
+      terminal: initialize_terminal()?,
+    })
+  }
+
+  fn restore(&mut self) -> Result {
+    terminal::disable_raw_mode()?;
+    execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
+    self.terminal.show_cursor()?;
+    Ok(())
+  }
+
+  #[allow(dead_code)]
+  fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
+    &mut self.terminal
+  }
+}
+
+impl Drop for TerminalGuard {
+  fn drop(&mut self) {
+    if let Err(error) = self.restore() {
+      eprintln!("failed to restore terminal: {error}");
+    }
+  }
+}
+
 fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
   terminal::enable_raw_mode()?;
   let mut stdout = io::stdout();
@@ -21,18 +53,9 @@ fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
   Ok(Terminal::new(CrosstermBackend::new(stdout))?)
 }
 
-fn restore_terminal(
-  terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-) -> Result {
-  terminal::disable_raw_mode()?;
-  execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-  terminal.show_cursor()?;
-  Ok(())
-}
-
 fn run() -> Result {
-  let mut terminal = initialize_terminal()?;
-  restore_terminal(&mut terminal)
+  let _terminal = TerminalGuard::new()?;
+  Ok(())
 }
 
 #[tokio::main]
