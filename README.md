@@ -3,6 +3,10 @@
 **spymux** is a terminal user-interface for simultaneously watching all of your
 open [tmux](https://github.com/tmux/tmux) panes.
 
+Why? I pair program a fair amount with tools like [codex](https://github.com/openai/codex),
+and I run them in different projects at the same time. I'd like a tool that gives
+me a clear view into what the agents are doing, at the same time.
+
 ## Installation
 
 ```
