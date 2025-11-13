@@ -12,15 +12,19 @@ use {
   ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    widgets::{Block, Borders, List, ListItem},
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders, Paragraph, Wrap},
   },
   std::{
     backtrace::BacktraceStatus,
+    env,
     io::{self, IsTerminal, Stdout},
     process::{self, Command, Output},
+    time::{Duration, Instant},
   },
   terminal_guard::TerminalGuard,
   tmux::Tmux,
+  unicode_width::UnicodeWidthChar,
 };
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;

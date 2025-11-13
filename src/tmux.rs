@@ -11,12 +11,10 @@ impl Tmux {
   }
 
   fn capture_with_runner(runner: &dyn CommandRunner) -> Result<Self> {
-    let output = runner.run(&[
-      "list-panes",
-      "-a",
-      "-F",
-      "#{session_name}:#{window_index}.#{pane_index}",
-    ])?;
+    const FORMAT: &str =
+      "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}";
+
+    let output = runner.run(&["list-panes", "-a", "-F", FORMAT])?;
 
     if !output.status.success() {
       bail!("failed to list tmux panes");
@@ -37,11 +35,19 @@ impl Tmux {
     Ok(Self { panes })
   }
 
+  pub(crate) fn exclude_pane_id(&mut self, pane_id: &str) {
+    self.panes.retain(|pane| pane.tmux_pane_id != pane_id);
+  }
+
   fn parse_and_capture_pane(
     line: &str,
     runner: &dyn CommandRunner,
   ) -> Result<Pane> {
-    let parts: Vec<&str> = line.split(':').collect();
+    let Some((descriptor, pane_id)) = line.split_once('\t') else {
+      bail!("invalid pane format: {line}");
+    };
+
+    let parts: Vec<&str> = descriptor.split(':').collect();
 
     if parts.len() != 2 {
       bail!("invalid pane format: {line}");
@@ -60,7 +66,8 @@ impl Tmux {
       window_pane[1].parse::<usize>()?,
     );
 
-    let content_output = runner.run(&["capture-pane", "-t", line, "-p"])?;
+    let content_output =
+      runner.run(&["capture-pane", "-t", descriptor, "-p"])?;
 
     if !content_output.status.success() {
       bail!("failed to capture pane output");
@@ -70,8 +77,9 @@ impl Tmux {
 
     Ok(Pane {
       content,
-      id: line.to_string(),
+      id: descriptor.to_string(),
       pane_index,
+      tmux_pane_id: pane_id.to_string(),
       session,
       window,
     })
@@ -185,7 +193,7 @@ mod tests {
 
     let runner = MockCommandRunner {
       capture_outputs,
-      list_panes_output: String::from("session1:0.0\n"),
+      list_panes_output: String::from("session1:0.0\t%0\n"),
       ..Default::default()
     };
 
@@ -199,6 +207,7 @@ mod tests {
         content: "Hello World\n".to_string(),
         id: "session1:0.0".to_string(),
         pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
         session: "session1".to_string(),
         window: 0,
       }]
@@ -216,7 +225,7 @@ mod tests {
     let runner = MockCommandRunner {
       capture_outputs,
       list_panes_output: String::from(
-        "session1:0.0\nsession1:0.1\nsession2:1.0\n",
+        "session1:0.0\t%0\nsession1:0.1\t%1\nsession2:1.0\t%2\n",
       ),
       ..Default::default()
     };
@@ -230,6 +239,7 @@ mod tests {
           content: "Pane 1\n".to_string(),
           id: "session1:0.0".to_string(),
           pane_index: 0,
+          tmux_pane_id: "%0".to_string(),
           session: "session1".to_string(),
           window: 0,
         },
@@ -237,6 +247,7 @@ mod tests {
           content: "Pane 2\n".to_string(),
           id: "session1:0.1".to_string(),
           pane_index: 1,
+          tmux_pane_id: "%1".to_string(),
           session: "session1".to_string(),
           window: 0,
         },
@@ -244,6 +255,7 @@ mod tests {
           content: "Pane 3\n".to_string(),
           id: "session2:1.0".to_string(),
           pane_index: 0,
+          tmux_pane_id: "%2".to_string(),
           session: "session2".to_string(),
           window: 1,
         },
@@ -259,7 +271,7 @@ mod tests {
       .insert("mysession:5.3".to_string(), "Content\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "mysession:5.3\n".to_string(),
+      list_panes_output: "mysession:5.3\t%10\n".to_string(),
       capture_outputs,
       ..Default::default()
     };
@@ -272,6 +284,7 @@ mod tests {
         content: "Content\n".to_string(),
         id: "mysession:5.3".to_string(),
         pane_index: 3,
+        tmux_pane_id: "%10".to_string(),
         session: "mysession".to_string(),
         window: 5,
       }]
@@ -285,7 +298,7 @@ mod tests {
     capture_outputs.insert("session1:0.0".to_string(), "Content\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\n\n\n".to_string(),
+      list_panes_output: "session1:0.0\t%0\n\n\n".to_string(),
       capture_outputs,
       ..Default::default()
     };
@@ -298,6 +311,7 @@ mod tests {
         content: "Content\n".to_string(),
         id: "session1:0.0".to_string(),
         pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
         session: "session1".to_string(),
         window: 0,
       }]
@@ -314,7 +328,7 @@ mod tests {
     );
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\n".to_string(),
+      list_panes_output: "session1:0.0\t%0\n".to_string(),
       capture_outputs,
       ..Default::default()
     };
@@ -327,6 +341,45 @@ mod tests {
         content: "Line 1\nLine 2\nLine 3\n".to_string(),
         id: "session1:0.0".to_string(),
         pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
+        session: "session1".to_string(),
+        window: 0,
+      }]
+    );
+  }
+
+  #[test]
+  fn exclude_pane_id_removes_matching_entry() {
+    let mut tmux = Tmux {
+      panes: vec![
+        Pane {
+          content: "one".to_string(),
+          id: "session1:0.0".to_string(),
+          pane_index: 0,
+          tmux_pane_id: "%0".to_string(),
+          session: "session1".to_string(),
+          window: 0,
+        },
+        Pane {
+          content: "two".to_string(),
+          id: "session1:0.1".to_string(),
+          pane_index: 1,
+          tmux_pane_id: "%1".to_string(),
+          session: "session1".to_string(),
+          window: 0,
+        },
+      ],
+    };
+
+    tmux.exclude_pane_id("%1");
+
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "one".to_string(),
+        id: "session1:0.0".to_string(),
+        pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
         session: "session1".to_string(),
         window: 0,
       }]
@@ -372,7 +425,7 @@ mod tests {
   #[test]
   fn invalid_window_index_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "session1:not_a_number.0\n".to_string(),
+      list_panes_output: "session1:not_a_number.0\t%0\n".to_string(),
       ..Default::default()
     };
 
@@ -384,7 +437,7 @@ mod tests {
   #[test]
   fn invalid_pane_index_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.not_a_number\n".to_string(),
+      list_panes_output: "session1:0.not_a_number\t%0\n".to_string(),
       ..Default::default()
     };
 
@@ -400,7 +453,7 @@ mod tests {
     capture_successes.insert("session1:0.0".to_string(), false);
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\n".to_string(),
+      list_panes_output: "session1:0.0\t%0\n".to_string(),
       capture_successes,
       ..Default::default()
     };
