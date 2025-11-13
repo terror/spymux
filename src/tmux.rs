@@ -342,7 +342,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.to_string().contains("failed to list tmux panes"));
+    assert_eq!(err.to_string(), "failed to list tmux panes");
   }
 
   #[test]
@@ -354,7 +354,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.to_string().contains("invalid pane format"));
+    assert_eq!(err.to_string(), "invalid pane format: not_a_valid_pane");
   }
 
   #[test]
@@ -366,7 +366,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.to_string().contains("invalid pane format"));
+    assert_eq!(err.to_string(), "invalid pane format: session1-0-0");
   }
 
   #[test]
@@ -378,7 +378,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.downcast_ref::<std::num::ParseIntError>().is_some());
+    assert_eq!(err.to_string(), "invalid digit found in string");
   }
 
   #[test]
@@ -390,12 +390,13 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.downcast_ref::<std::num::ParseIntError>().is_some());
+    assert_eq!(err.to_string(), "invalid digit found in string");
   }
 
   #[test]
   fn capture_pane_command_failure() {
     let mut capture_successes = BTreeMap::new();
+
     capture_successes.insert("session1:0.0".to_string(), false);
 
     let runner = MockCommandRunner {
@@ -406,7 +407,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.to_string().contains("failed to capture pane output"));
+    assert_eq!(err.to_string(), "failed to capture pane output");
   }
 
   #[test]
@@ -428,6 +429,9 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&InvalidUtf8Runner).unwrap_err();
 
-    assert!(err.downcast_ref::<std::string::FromUtf8Error>().is_some());
+    assert_eq!(
+      err.to_string(),
+      "invalid utf-8 sequence of 1 bytes from index 0"
+    );
   }
 }
