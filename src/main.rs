@@ -17,8 +17,10 @@ use {
   },
   std::{
     backtrace::BacktraceStatus,
+    env,
     io::{self, IsTerminal, Stdout},
     process::{self, Command, Output},
+    time::{Duration, Instant},
   },
   terminal_guard::TerminalGuard,
   tmux::Tmux,

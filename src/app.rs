@@ -2,11 +2,25 @@ use super::*;
 
 #[derive(Debug)]
 pub(crate) struct App {
+  current_pane_id: Option<String>,
+  last_refresh: Instant,
   terminal: TerminalGuard,
   tmux: Tmux,
 }
 
 impl App {
+  const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+
+  fn capture_tmux(current_pane_id: Option<&str>) -> Result<Tmux> {
+    let mut tmux = Tmux::capture()?;
+
+    if let Some(pane_id) = current_pane_id {
+      tmux.exclude_pane_id(pane_id);
+    }
+
+    Ok(tmux)
+  }
+
   fn clip_to_bottom(content: &str, max_lines: usize) -> String {
     if max_lines == 0 {
       return String::new();
@@ -47,17 +61,28 @@ impl App {
   pub(crate) fn new() -> Result<Self> {
     let terminal = TerminalGuard::new()?;
 
-    let mut tmux = Tmux::capture()?;
+    let current_pane_id = env::var("TMUX_PANE").ok();
 
-    if let Ok(current_pane) = std::env::var("TMUX_PANE") {
-      tmux.exclude_pane_id(&current_pane);
-    }
+    Ok(Self {
+      terminal,
+      tmux: Self::capture_tmux(current_pane_id.as_deref())?,
+      current_pane_id,
+      last_refresh: Instant::now(),
+    })
+  }
 
-    Ok(Self { terminal, tmux })
+  fn refresh_tmux(&mut self) -> Result {
+    self.tmux = Self::capture_tmux(self.current_pane_id.as_deref())?;
+    self.last_refresh = Instant::now();
+    Ok(())
   }
 
   pub(crate) fn run(mut self) -> Result {
     loop {
+      if self.last_refresh.elapsed() >= Self::REFRESH_INTERVAL {
+        self.refresh_tmux()?;
+      }
+
       let terminal = self.terminal.terminal_mut();
 
       terminal.draw(|frame| {
@@ -134,7 +159,12 @@ impl App {
         }
       })?;
 
-      if let Event::Key(key) = event::read()?
+      let timeout = Self::REFRESH_INTERVAL
+        .checked_sub(self.last_refresh.elapsed())
+        .unwrap_or(Duration::from_millis(0));
+
+      if event::poll(timeout)?
+        && let Event::Key(key) = event::read()?
         && key.kind == KeyEventKind::Press
         && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
       {
