@@ -1,17 +1,13 @@
-use {super::*, crate::pane::Pane};
+use super::*;
 
 #[derive(Debug)]
 pub(crate) struct Tmux {
-  panes: Vec<Pane>,
+  pub(crate) panes: Vec<Pane>,
 }
 
 impl Tmux {
   pub(crate) fn capture() -> Result<Self> {
     Self::capture_with_runner(&TmuxCommandRunner)
-  }
-
-  pub(crate) fn panes(&self) -> &[Pane] {
-    &self.panes
   }
 
   fn capture_with_runner(runner: &dyn CommandRunner) -> Result<Self> {
@@ -39,6 +35,10 @@ impl Tmux {
     }
 
     Ok(Self { panes })
+  }
+
+  pub(crate) fn panes(&self) -> &[Pane] {
+    &self.panes
   }
 
   fn parse_and_capture_pane(
@@ -91,14 +91,27 @@ mod tests {
 
   struct MockCommandRunner {
     capture_outputs: BTreeMap<String, String>,
+    capture_successes: BTreeMap<String, bool>,
     list_panes_output: String,
+    list_panes_success: bool,
+  }
+
+  impl Default for MockCommandRunner {
+    fn default() -> Self {
+      Self {
+        capture_outputs: BTreeMap::new(),
+        capture_successes: BTreeMap::new(),
+        list_panes_output: String::new(),
+        list_panes_success: true,
+      }
+    }
   }
 
   impl CommandRunner for MockCommandRunner {
     fn run(&self, args: &[&str]) -> Result<Output> {
       match args[0] {
         "list-panes" => Ok(Output {
-          status: ExitStatus::default(),
+          status: exit_status(self.list_panes_success),
           stdout: self.list_panes_output.as_bytes().to_vec(),
           stderr: vec![],
         }),
@@ -110,9 +123,10 @@ mod tests {
             .get(pane_id)
             .unwrap_or(&String::new())
             .clone();
+          let success = *self.capture_successes.get(pane_id).unwrap_or(&true);
 
           Ok(Output {
-            status: ExitStatus::default(),
+            status: exit_status(success),
             stdout: content.as_bytes().to_vec(),
             stderr: vec![],
           })
@@ -126,7 +140,7 @@ mod tests {
   fn empty_pane_list() {
     let runner = MockCommandRunner {
       list_panes_output: String::new(),
-      capture_outputs: BTreeMap::new(),
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -144,6 +158,7 @@ mod tests {
     let runner = MockCommandRunner {
       capture_outputs,
       list_panes_output: String::from("session1:0.0\n"),
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -175,6 +190,7 @@ mod tests {
       list_panes_output: String::from(
         "session1:0.0\nsession1:0.1\nsession2:1.0\n",
       ),
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -217,6 +233,7 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: "mysession:5.3\n".to_string(),
       capture_outputs,
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -242,6 +259,7 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: "session1:0.0\n\n\n".to_string(),
       capture_outputs,
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -270,6 +288,7 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: "session1:0.0\n".to_string(),
       capture_outputs,
+      ..Default::default()
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -284,5 +303,134 @@ mod tests {
         window: 0,
       }]
     );
+  }
+
+  #[test]
+  fn list_panes_command_failure() {
+    let runner = MockCommandRunner {
+      list_panes_success: false,
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.to_string().contains("failed to list tmux panes"));
+  }
+
+  #[test]
+  fn invalid_pane_format_returns_error() {
+    let runner = MockCommandRunner {
+      list_panes_output: "not_a_valid_pane\n".to_string(),
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.to_string().contains("invalid pane format"));
+  }
+
+  #[test]
+  fn invalid_window_pane_format_returns_error() {
+    let runner = MockCommandRunner {
+      list_panes_output: "session1-0-0\n".to_string(),
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.to_string().contains("invalid window.pane format"));
+  }
+
+  #[test]
+  fn invalid_window_index_returns_error() {
+    let runner = MockCommandRunner {
+      list_panes_output: "session1:not_a_number.0\n".to_string(),
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.downcast_ref::<std::num::ParseIntError>().is_some());
+  }
+
+  #[test]
+  fn invalid_pane_index_returns_error() {
+    let runner = MockCommandRunner {
+      list_panes_output: "session1:0.not_a_number\n".to_string(),
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.downcast_ref::<std::num::ParseIntError>().is_some());
+  }
+
+  #[test]
+  fn capture_pane_command_failure() {
+    let mut capture_successes = BTreeMap::new();
+    capture_successes.insert("session1:0.0".to_string(), false);
+
+    let runner = MockCommandRunner {
+      list_panes_output: "session1:0.0\n".to_string(),
+      capture_successes,
+      ..Default::default()
+    };
+
+    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+
+    assert!(err.to_string().contains("failed to capture pane output"));
+  }
+
+  #[test]
+  fn invalid_utf8_in_list_output_propagates_error() {
+    struct InvalidUtf8Runner;
+
+    impl CommandRunner for InvalidUtf8Runner {
+      fn run(&self, args: &[&str]) -> Result<Output> {
+        match args[0] {
+          "list-panes" => Ok(Output {
+            status: exit_status(true),
+            stdout: vec![0xf0, 0x28, 0x8c, 0x28],
+            stderr: vec![],
+          }),
+          _ => bail!("unexpected command"),
+        }
+      }
+    }
+
+    let err = Tmux::capture_with_runner(&InvalidUtf8Runner).unwrap_err();
+
+    assert!(err.downcast_ref::<std::string::FromUtf8Error>().is_some());
+  }
+
+  #[cfg(unix)]
+  fn exit_status(success: bool) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+
+    if success {
+      ExitStatus::from_raw(0)
+    } else {
+      ExitStatus::from_raw(1)
+    }
+  }
+
+  #[cfg(windows)]
+  fn exit_status(success: bool) -> ExitStatus {
+    use std::os::windows::process::ExitStatusExt;
+
+    if success {
+      ExitStatus::from_raw(0)
+    } else {
+      ExitStatus::from_raw(1)
+    }
+  }
+
+  #[cfg(not(any(unix, windows)))]
+  fn exit_status(success: bool) -> ExitStatus {
+    if success {
+      ExitStatus::default()
+    } else {
+      panic!("unsupported platform for tests");
+    }
   }
 }

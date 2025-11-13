@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Debug)]
 pub(crate) struct TerminalGuard {
   terminal: Terminal<CrosstermBackend<Stdout>>,
 }
