@@ -1,5 +1,6 @@
 use {
   anyhow::{Error, bail},
+  command_runner::{CommandRunner, TmuxCommandRunner},
   crossterm::{
     execute,
     style::Stylize,
@@ -10,23 +11,17 @@ use {
   std::{
     backtrace::BacktraceStatus,
     io::{self, IsTerminal, Stdout},
-    process::{self, Command},
+    process::{self, Command, Output},
   },
   terminal_guard::TerminalGuard,
 };
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
+mod command_runner;
 mod pane;
 mod terminal_guard;
 mod tmux;
-
-fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
-  terminal::enable_raw_mode()?;
-  let mut stdout = io::stdout();
-  execute!(stdout, EnterAlternateScreen)?;
-  Ok(Terminal::new(CrosstermBackend::new(stdout))?)
-}
 
 fn run() -> Result {
   let _terminal = TerminalGuard::new()?;

@@ -5,9 +5,16 @@ pub(crate) struct TerminalGuard {
 }
 
 impl TerminalGuard {
+  fn initialize() -> Result<Terminal<CrosstermBackend<Stdout>>> {
+    terminal::enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    Ok(Terminal::new(CrosstermBackend::new(stdout))?)
+  }
+
   pub(crate) fn new() -> Result<Self> {
     Ok(Self {
-      terminal: initialize_terminal()?,
+      terminal: Self::initialize()?,
     })
   }
 

@@ -1,7 +1,4 @@
-use {
-  anyhow::{Result, bail},
-  std::process::{Command, Output},
-};
+use super::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Pane {
@@ -10,18 +7,6 @@ pub(crate) struct Pane {
   pub pane_index: usize,
   pub session: String,
   pub window: usize,
-}
-
-trait CommandRunner {
-  fn run(&self, args: &[&str]) -> Result<Output>;
-}
-
-struct TmuxCommandRunner;
-
-impl CommandRunner for TmuxCommandRunner {
-  fn run(&self, args: &[&str]) -> Result<Output> {
-    Ok(Command::new("tmux").args(args).output()?)
-  }
 }
 
 #[derive(Debug)]
@@ -68,7 +53,7 @@ impl Tmux {
     let parts: Vec<&str> = line.split(':').collect();
 
     if parts.len() != 2 {
-      bail!("invalid pane format: {}", line);
+      bail!("invalid pane format: {line}");
     }
 
     let session = parts[0].to_string();
@@ -110,8 +95,8 @@ mod tests {
   };
 
   struct MockCommandRunner {
-    list_panes_output: String,
     capture_outputs: BTreeMap<String, String>,
+    list_panes_output: String,
   }
 
   impl CommandRunner for MockCommandRunner {
@@ -143,15 +128,27 @@ mod tests {
   }
 
   #[test]
-  fn test_capture_single_pane() {
+  fn empty_pane_list() {
+    let runner = MockCommandRunner {
+      list_panes_output: String::new(),
+      capture_outputs: BTreeMap::new(),
+    };
+
+    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+
+    assert_eq!(tmux.panes.len(), 0);
+  }
+
+  #[test]
+  fn capture_single_pane() {
     let mut capture_outputs = BTreeMap::new();
 
     capture_outputs
       .insert("session1:0.0".to_string(), "Hello World\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\n".to_string(),
       capture_outputs,
+      list_panes_output: String::from("session1:0.0\n"),
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
@@ -171,7 +168,7 @@ mod tests {
   }
 
   #[test]
-  fn test_capture_multiple_panes() {
+  fn capture_multiple_panes() {
     let mut capture_outputs = BTreeMap::new();
 
     capture_outputs.insert("session1:0.0".to_string(), "Pane 1\n".to_string());
@@ -179,21 +176,44 @@ mod tests {
     capture_outputs.insert("session2:1.0".to_string(), "Pane 3\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\nsession1:0.1\nsession2:1.0\n"
-        .to_string(),
       capture_outputs,
+      list_panes_output: String::from(
+        "session1:0.0\nsession1:0.1\nsession2:1.0\n",
+      ),
     };
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
 
-    assert_eq!(tmux.panes.len(), 3);
-    assert_eq!(tmux.panes[0].session, "session1");
-    assert_eq!(tmux.panes[1].window, 0);
-    assert_eq!(tmux.panes[2].pane_index, 0);
+    assert_eq!(
+      tmux.panes,
+      vec![
+        Pane {
+          content: "Pane 1\n".to_string(),
+          id: "session1:0.0".to_string(),
+          pane_index: 0,
+          session: "session1".to_string(),
+          window: 0,
+        },
+        Pane {
+          content: "Pane 2\n".to_string(),
+          id: "session1:0.1".to_string(),
+          pane_index: 1,
+          session: "session1".to_string(),
+          window: 0,
+        },
+        Pane {
+          content: "Pane 3\n".to_string(),
+          id: "session2:1.0".to_string(),
+          pane_index: 0,
+          session: "session2".to_string(),
+          window: 1,
+        },
+      ]
+    );
   }
 
   #[test]
-  fn test_parse_pane_with_different_indices() {
+  fn parse_pane_with_different_indices() {
     let mut capture_outputs = BTreeMap::new();
 
     capture_outputs
@@ -206,25 +226,20 @@ mod tests {
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
 
-    assert_eq!(tmux.panes[0].session, "mysession");
-    assert_eq!(tmux.panes[0].window, 5);
-    assert_eq!(tmux.panes[0].pane_index, 3);
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "Content\n".to_string(),
+        id: "mysession:5.3".to_string(),
+        pane_index: 3,
+        session: "mysession".to_string(),
+        window: 5,
+      }]
+    );
   }
 
   #[test]
-  fn test_empty_pane_list() {
-    let runner = MockCommandRunner {
-      list_panes_output: "".to_string(),
-      capture_outputs: BTreeMap::new(),
-    };
-
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
-
-    assert_eq!(tmux.panes.len(), 0);
-  }
-
-  #[test]
-  fn test_skips_empty_lines() {
+  fn skips_empty_lines() {
     let mut capture_outputs = BTreeMap::new();
 
     capture_outputs.insert("session1:0.0".to_string(), "Content\n".to_string());
@@ -236,11 +251,20 @@ mod tests {
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
 
-    assert_eq!(tmux.panes.len(), 1);
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "Content\n".to_string(),
+        id: "session1:0.0".to_string(),
+        pane_index: 0,
+        session: "session1".to_string(),
+        window: 0,
+      }]
+    );
   }
 
   #[test]
-  fn test_multiline_content() {
+  fn multiline_content() {
     let mut capture_outputs = BTreeMap::new();
 
     capture_outputs.insert(
@@ -255,6 +279,15 @@ mod tests {
 
     let tmux = Tmux::capture_with_runner(&runner).unwrap();
 
-    assert_eq!(tmux.panes[0].content, "Line 1\nLine 2\nLine 3\n");
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "Line 1\nLine 2\nLine 3\n".to_string(),
+        id: "session1:0.0".to_string(),
+        pane_index: 0,
+        session: "session1".to_string(),
+        window: 0,
+      }]
+    );
   }
 }
