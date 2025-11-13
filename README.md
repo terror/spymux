@@ -11,8 +11,66 @@ me a clear view into what the agents are doing, at the same time.
 
 ## Installation
 
+`spymux` should run on any system, including Linux, MacOS, and the BSDs.
+
+The easiest way to install it is by using
+[cargo](https://doc.rust-lang.org/cargo/index.html), the Rust package manager:
+
+```bash
+cargo install spymux
 ```
-git clone https://github.com/terror/spymux
-cd spymux
-cargo install --path .
+
+Otherwise, see below for the complete package list:
+
+#### Cross-platform
+
+<table>
+  <thead>
+    <tr>
+      <th>Package Manager</th>
+      <th>Package</th>
+      <th>Command</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href=https://www.rust-lang.org>Cargo</a></td>
+      <td><a href=https://crates.io/crates/spymux>spymux</a></td>
+      <td><code>cargo install spymux</code></td>
+    </tr>
+    <tr>
+      <td><a href=https://brew.sh>Homebrew</a></td>
+      <td><a href=https://github.com/terror/homebrew-tap>terror/tap/spymux</a></td>
+      <td><code>brew install terror/tap/spymux</code></td>
+    </tr>
+  </tbody>
+</table>
+
+## Usage
+
+**spymux** is very simple to use, once installed you should be able to invoke the
+binary in any [tmux](https://github.com/tmux/tmux) session and have it work:
+
 ```
+spymux
+```
+
+We support a few configuration options, as seen below:
+
+```present cargo run -- --help
+spymux 0.1.0
+
+
+
+Usage: spymux [OPTIONS]
+
+Options:
+  -n, --no-colors  Disable colored output
+  -h, --help       Print help
+  -V, --version    Print version
+```
+
+## Prior Art
+
+There are a few parallel agent tools this project is loosely inspired by,
+however

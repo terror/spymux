@@ -1,7 +1,16 @@
 [package]
 name = "spymux"
 version = "0.1.0"
+description = "A centralized view for all of your tmux panes"
+authors = ["Liam <liam@scalzulli.com>"]
+license = "CC0-1.0"
+homepage = "https://github.com/terror/spymux"
+repository = "https://github.com/terror/spymux"
 edition = "2024"
+exclude = ["/screenshot.png"]
+categories = ["development-tools"]
+keywords = ["productivity", "tmux"]
+resolver = "2"
 
 [dependencies]
 ansi-to-tui = "7.0.0"
