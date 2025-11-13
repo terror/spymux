@@ -63,12 +63,84 @@ impl Tmux {
     Self::select_pane_with_runner(&pane.tmux_pane_id, runner)
   }
 
+  pub(crate) fn list_spymux_instances() -> Result<Vec<SpymuxInstance>> {
+    Self::list_spymux_instances_with_runner(&TmuxCommandRunner)
+  }
+
+  fn list_spymux_instances_with_runner(
+    runner: &dyn CommandRunner,
+  ) -> Result<Vec<SpymuxInstance>> {
+    const FORMAT: &str = concat!(
+      "#{session_name}:#{window_index}.#{pane_index}\t",
+      "#{pane_id}\t",
+      "#{pane_current_command}\t",
+      "#{pane_start_command}\t",
+      "#{pane_current_path}"
+    );
+
+    let output = runner.run(&["list-panes", "-a", "-F", FORMAT])?;
+
+    if !output.status.success() {
+      bail!("failed to list tmux panes");
+    }
+
+    let mut instances = Vec::new();
+
+    for line in String::from_utf8(output.stdout)?.lines() {
+      if line.is_empty() {
+        continue;
+      }
+
+      let mut parts = line.split('\t');
+
+      let Some(descriptor) = parts.next() else {
+        continue;
+      };
+
+      let Some(pane_id) = parts.next() else {
+        continue;
+      };
+
+      let current_command = parts.next().unwrap_or_default();
+      let start_command = parts.next().unwrap_or_default();
+      let path = parts.next().unwrap_or_default();
+
+      if !Self::pane_runs_spymux(current_command, start_command) {
+        continue;
+      }
+
+      let (session, window, pane_index) = Self::parse_descriptor(descriptor)?;
+
+      instances.push(SpymuxInstance {
+        current_path: path.to_string(),
+        pane: Pane {
+          content: String::new(),
+          id: descriptor.to_string(),
+          pane_index,
+          session,
+          tmux_pane_id: pane_id.to_string(),
+          window,
+        },
+      });
+    }
+
+    Ok(instances)
+  }
+
   pub(crate) fn new(config: Config) -> Self {
     Self {
       excluded_pane_ids: Vec::new(),
       include_escape_codes: config.color_output,
       panes: Vec::new(),
     }
+  }
+
+  fn pane_runs_spymux(current: &str, start: &str) -> bool {
+    if current.trim().eq_ignore_ascii_case("spymux") {
+      return true;
+    }
+
+    start.trim().to_ascii_lowercase().contains("spymux")
   }
 
   fn parse_and_capture_pane(
@@ -123,6 +195,25 @@ impl Tmux {
     })
   }
 
+  fn parse_descriptor(descriptor: &str) -> Result<(String, usize, usize)> {
+    let parts: Vec<&str> = descriptor.split(':').collect();
+
+    if parts.len() != 2 {
+      bail!("invalid pane format: {descriptor}");
+    }
+
+    let window_parts = parts[1].split('.').collect::<Vec<&str>>();
+
+    if window_parts.len() != 2 {
+      bail!("invalid window.pane format: {}", parts[1]);
+    }
+
+    let window = window_parts[0].parse::<usize>()?;
+    let pane_index = window_parts[1].parse::<usize>()?;
+
+    Ok((parts[0].to_string(), window, pane_index))
+  }
+
   fn select_pane_with_runner(
     pane_id: &str,
     runner: &dyn CommandRunner,
@@ -148,6 +239,12 @@ impl Tmux {
 
     Ok(())
   }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SpymuxInstance {
+  pub(crate) current_path: String,
+  pub(crate) pane: Pane,
 }
 
 #[cfg(test)]
@@ -597,6 +694,32 @@ mod tests {
         .to_string(),
       "failed to select tmux window"
     );
+  }
+
+  #[test]
+  fn list_spymux_instances_with_runner_filters_entries() {
+    let runner = MockCommandRunner {
+      list_panes_output: "\
+session1:0.0\t%0\tspymux\tspymux\t/home/project\n\
+session1:0.1\t%1\tbash\tcargo run -- spymux\t/home/other\n\
+session1:0.2\t%2\tbash\tbash\t/home/skip\n"
+        .to_string(),
+      ..Default::default()
+    };
+
+    let instances = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
+
+    assert_eq!(instances.len(), 2);
+    assert_eq!(instances[0].pane.id, "session1:0.0");
+    assert_eq!(instances[1].pane.id, "session1:0.1");
+    assert_eq!(instances[1].current_path, "/home/other");
+  }
+
+  #[test]
+  fn pane_runs_spymux_detects_commands() {
+    assert!(Tmux::pane_runs_spymux("spymux", "bash"));
+    assert!(Tmux::pane_runs_spymux("bash", "cargo run spymux"));
+    assert!(!Tmux::pane_runs_spymux("bash", "bash start"));
   }
 
   #[test]
