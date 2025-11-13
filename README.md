@@ -60,7 +60,7 @@ We support a few configuration options, as seen below:
 ```present cargo run -- --help
 spymux 0.1.0
 
-
+A centralized view for all of your tmux panes
 
 Usage: spymux [OPTIONS]
 
@@ -72,5 +72,5 @@ Options:
 
 ## Prior Art
 
-There are a few parallel agent tools this project is loosely inspired by,
-however
+This project is loosely inspired by tools like [Claude Squad](https://github.com/smtg-ai/claude-squad). I want less of the management aspect, and more of a simple view into how things are going
+across the various agent instances I have open at any given time.

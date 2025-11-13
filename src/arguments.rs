@@ -7,7 +7,7 @@ use super::*;
   version,
   help_template = "\
 {before-help}{name} {version}
-{author}
+
 {about}
 
 \x1b[1;4mUsage\x1b[0m: {usage}
