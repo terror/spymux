@@ -1,7 +1,11 @@
 use {
+  ansi_to_tui::IntoText,
   anyhow::{Error, bail},
   app::App,
+  arguments::Arguments,
+  clap::Parser,
   command_runner::{CommandRunner, TmuxCommandRunner},
+  config::Config,
   crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -13,10 +17,14 @@ use {
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
+    style::Style,
+    text::{Line, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
   },
+  row_cursor::RowCursor,
   std::{
     backtrace::BacktraceStatus,
+    borrow::Cow,
     env,
     io::{self, IsTerminal, Stdout},
     process::{self, Command, Output},
@@ -30,18 +38,19 @@ use {
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
 mod app;
+mod arguments;
 mod command_runner;
+mod config;
 mod pane;
+mod row_cursor;
 mod terminal_guard;
 mod tmux;
 
-fn run() -> Result {
-  App::new()?.run()
-}
-
 fn main() {
-  if let Err(error) = run() {
-    let use_color = io::stderr().is_terminal();
+  let arguments = Arguments::parse();
+
+  if let Err(error) = arguments.run() {
+    let use_color = io::stderr().is_terminal() && arguments.color_output();
 
     if use_color {
       eprintln!("{} {error}", "error:".bold().red());

@@ -1,16 +1,18 @@
 use super::*;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Tmux {
+  pub(crate) excluded_pane_ids: Vec<String>,
+  pub(crate) include_escape_codes: bool,
   pub(crate) panes: Vec<Pane>,
 }
 
 impl Tmux {
-  pub(crate) fn capture() -> Result<Self> {
-    Self::capture_with_runner(&TmuxCommandRunner)
+  pub(crate) fn capture(&mut self) -> Result {
+    self.capture_with_runner(&TmuxCommandRunner)
   }
 
-  fn capture_with_runner(runner: &dyn CommandRunner) -> Result<Self> {
+  fn capture_with_runner(&mut self, runner: &dyn CommandRunner) -> Result {
     const FORMAT: &str =
       "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}";
 
@@ -29,17 +31,35 @@ impl Tmux {
         continue;
       }
 
-      panes.push(Self::parse_and_capture_pane(line, runner)?);
+      let pane = self.parse_and_capture_pane(line, runner)?;
+
+      if self.excluded_pane_ids.contains(&pane.tmux_pane_id) {
+        continue;
+      }
+
+      panes.push(pane);
     }
 
-    Ok(Self { panes })
+    self.panes = panes;
+
+    Ok(())
   }
 
   pub(crate) fn exclude_pane_id(&mut self, pane_id: &str) {
     self.panes.retain(|pane| pane.tmux_pane_id != pane_id);
+    self.excluded_pane_ids.push(pane_id.to_string());
+  }
+
+  pub(crate) fn new(config: Config) -> Self {
+    Self {
+      excluded_pane_ids: Vec::new(),
+      include_escape_codes: config.color_output,
+      panes: Vec::new(),
+    }
   }
 
   fn parse_and_capture_pane(
+    &self,
     line: &str,
     runner: &dyn CommandRunner,
   ) -> Result<Pane> {
@@ -66,8 +86,13 @@ impl Tmux {
       window_pane[1].parse::<usize>()?,
     );
 
-    let content_output =
-      runner.run(&["capture-pane", "-t", descriptor, "-p"])?;
+    let mut capture_cmd = vec!["capture-pane", "-t", descriptor, "-p"];
+
+    if self.include_escape_codes {
+      capture_cmd.push("-e");
+    }
+
+    let content_output = runner.run(&capture_cmd)?;
 
     if !content_output.status.success() {
       bail!("failed to capture pane output");
@@ -179,7 +204,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(tmux.panes.len(), 0);
   }
@@ -197,7 +224,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(tmux.panes.len(), 1);
 
@@ -230,7 +259,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(
       tmux.panes,
@@ -264,6 +295,37 @@ mod tests {
   }
 
   #[test]
+  fn capture_skips_excluded_panes() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "Pane 1\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "Pane 2\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: String::from("session1:0.0\t%0\nsession1:0.1\t%1\n"),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.exclude_pane_id("%1");
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "Pane 1\n".to_string(),
+        id: "session1:0.0".to_string(),
+        pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
+        session: "session1".to_string(),
+        window: 0,
+      }]
+    );
+  }
+
+  #[test]
   fn parse_pane_with_different_indices() {
     let mut capture_outputs = BTreeMap::new();
 
@@ -276,7 +338,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(
       tmux.panes,
@@ -303,7 +367,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(
       tmux.panes,
@@ -333,7 +399,9 @@ mod tests {
       ..Default::default()
     };
 
-    let tmux = Tmux::capture_with_runner(&runner).unwrap();
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
 
     assert_eq!(
       tmux.panes,
@@ -369,6 +437,7 @@ mod tests {
           window: 0,
         },
       ],
+      ..Default::default()
     };
 
     tmux.exclude_pane_id("%1");
@@ -393,9 +462,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "failed to list tmux panes");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "failed to list tmux panes"
+    );
   }
 
   #[test]
@@ -405,9 +477,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "invalid pane format: not_a_valid_pane");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "invalid pane format: not_a_valid_pane"
+    );
   }
 
   #[test]
@@ -417,9 +492,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "invalid pane format: session1-0-0");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "invalid pane format: session1-0-0"
+    );
   }
 
   #[test]
@@ -429,9 +507,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "invalid digit found in string");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "invalid digit found in string"
+    );
   }
 
   #[test]
@@ -441,9 +522,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "invalid digit found in string");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "invalid digit found in string"
+    );
   }
 
   #[test]
@@ -458,9 +542,12 @@ mod tests {
       ..Default::default()
     };
 
-    let err = Tmux::capture_with_runner(&runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
-    assert_eq!(err.to_string(), "failed to capture pane output");
+    assert_eq!(
+      tmux.capture_with_runner(&runner).unwrap_err().to_string(),
+      "failed to capture pane output"
+    );
   }
 
   #[test]
@@ -480,10 +567,13 @@ mod tests {
       }
     }
 
-    let err = Tmux::capture_with_runner(&InvalidUtf8Runner).unwrap_err();
+    let mut tmux = Tmux::new(Config::default());
 
     assert_eq!(
-      err.to_string(),
+      tmux
+        .capture_with_runner(&InvalidUtf8Runner)
+        .unwrap_err()
+        .to_string(),
       "invalid utf-8 sequence of 1 bytes from index 0"
     );
   }
