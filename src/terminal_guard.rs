@@ -9,7 +9,7 @@ impl TerminalGuard {
   fn initialize() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     Ok(Terminal::new(CrosstermBackend::new(stdout))?)
   }
 
@@ -21,7 +21,11 @@ impl TerminalGuard {
 
   pub(crate) fn restore(&mut self) -> Result {
     terminal::disable_raw_mode()?;
-    execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+      self.terminal.backend_mut(),
+      LeaveAlternateScreen,
+      DisableMouseCapture
+    )?;
     self.terminal.show_cursor()?;
     Ok(())
   }

@@ -7,7 +7,10 @@ use {
   command_runner::{CommandRunner, TmuxCommandRunner},
   config::Config,
   crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{
+      self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+      KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
+    },
     execute,
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -16,7 +19,7 @@ use {
   ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
