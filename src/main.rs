@@ -1,50 +1,25 @@
 use {
+  anyhow::{Error, bail},
   crossterm::{
     execute,
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  pane::Pane,
   ratatui::{Terminal, backend::CrosstermBackend},
   std::{
     backtrace::BacktraceStatus,
     io::{self, IsTerminal, Stdout},
-    process,
+    process::{self, Command},
   },
+  terminal_guard::TerminalGuard,
 };
 
-type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
+type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-struct TerminalGuard {
-  terminal: Terminal<CrosstermBackend<Stdout>>,
-}
-
-impl TerminalGuard {
-  fn new() -> Result<Self> {
-    Ok(Self {
-      terminal: initialize_terminal()?,
-    })
-  }
-
-  fn restore(&mut self) -> Result {
-    terminal::disable_raw_mode()?;
-    execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
-    self.terminal.show_cursor()?;
-    Ok(())
-  }
-
-  #[allow(dead_code)]
-  fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
-    &mut self.terminal
-  }
-}
-
-impl Drop for TerminalGuard {
-  fn drop(&mut self) {
-    if let Err(error) = self.restore() {
-      eprintln!("failed to restore terminal: {error}");
-    }
-  }
-}
+mod pane;
+mod terminal_guard;
+mod tmux;
 
 fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
   terminal::enable_raw_mode()?;
