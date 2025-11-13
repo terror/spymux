@@ -1,4 +1,4 @@
-use {super::*, unicode_width::UnicodeWidthChar};
+use super::*;
 
 #[derive(Debug)]
 pub(crate) struct App {
@@ -31,6 +31,7 @@ impl App {
     }
 
     let bytes = content.as_bytes();
+
     let mut render_end = bytes.len();
 
     while render_end > 0 && bytes[render_end - 1] == b'\n' {
@@ -204,7 +205,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-  use super::App;
+  use super::*;
 
   #[test]
   fn clip_to_bottom_returns_all_when_shorter() {
@@ -232,9 +233,10 @@ mod tests {
 
   #[test]
   fn clip_to_bottom_truncates_wrapped_lines() {
-    let content = "1234567890abcdefghij";
-
-    assert_eq!(App::clip_to_bottom(content, 2, 5), "abcdefghij");
+    assert_eq!(
+      App::clip_to_bottom("1234567890abcdefghij", 2, 5),
+      "abcdefghij"
+    );
   }
 
   #[test]

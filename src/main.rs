@@ -24,6 +24,7 @@ use {
   },
   terminal_guard::TerminalGuard,
   tmux::Tmux,
+  unicode_width::UnicodeWidthChar,
 };
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
