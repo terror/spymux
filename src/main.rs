@@ -80,8 +80,7 @@ fn run() -> Result {
   App::new()?.run()
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
   if let Err(error) = run() {
     let use_color = io::stderr().is_terminal();
 
