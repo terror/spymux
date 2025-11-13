@@ -1,65 +1,41 @@
 use {
+  anyhow::{Error, bail},
+  app::App,
+  command_runner::{CommandRunner, TmuxCommandRunner},
   crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
-  ratatui::{Terminal, backend::CrosstermBackend},
+  pane::Pane,
+  ratatui::{
+    Terminal,
+    backend::CrosstermBackend,
+    widgets::{Block, Borders, List, ListItem},
+  },
   std::{
     backtrace::BacktraceStatus,
     io::{self, IsTerminal, Stdout},
-    process,
+    process::{self, Command, Output},
   },
+  terminal_guard::TerminalGuard,
+  tmux::Tmux,
 };
 
-type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
+type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-struct TerminalGuard {
-  terminal: Terminal<CrosstermBackend<Stdout>>,
-}
-
-impl TerminalGuard {
-  fn new() -> Result<Self> {
-    Ok(Self {
-      terminal: initialize_terminal()?,
-    })
-  }
-
-  fn restore(&mut self) -> Result {
-    terminal::disable_raw_mode()?;
-    execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
-    self.terminal.show_cursor()?;
-    Ok(())
-  }
-
-  #[allow(dead_code)]
-  fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
-    &mut self.terminal
-  }
-}
-
-impl Drop for TerminalGuard {
-  fn drop(&mut self) {
-    if let Err(error) = self.restore() {
-      eprintln!("failed to restore terminal: {error}");
-    }
-  }
-}
-
-fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
-  terminal::enable_raw_mode()?;
-  let mut stdout = io::stdout();
-  execute!(stdout, EnterAlternateScreen)?;
-  Ok(Terminal::new(CrosstermBackend::new(stdout))?)
-}
+mod app;
+mod command_runner;
+mod pane;
+mod terminal_guard;
+mod tmux;
 
 fn run() -> Result {
-  let _terminal = TerminalGuard::new()?;
-  Ok(())
+  App::new()?.run()
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
   if let Err(error) = run() {
     let use_color = io::stderr().is_terminal();
 
