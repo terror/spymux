@@ -1,6 +1,8 @@
 use {
   anyhow::{Error, bail},
   app::App,
+  arguments::Arguments,
+  clap::Parser,
   command_runner::{CommandRunner, TmuxCommandRunner},
   crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -29,17 +31,14 @@ use {
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
 mod app;
+mod arguments;
 mod command_runner;
 mod pane;
 mod terminal_guard;
 mod tmux;
 
-fn run() -> Result {
-  App::new()?.run()
-}
-
 fn main() {
-  if let Err(error) = run() {
+  if let Err(error) = Arguments::parse().run() {
     let use_color = io::stderr().is_terminal();
 
     if use_color {
