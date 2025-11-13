@@ -295,6 +295,37 @@ mod tests {
   }
 
   #[test]
+  fn capture_skips_excluded_panes() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "Pane 1\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "Pane 2\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: String::from("session1:0.0\t%0\nsession1:0.1\t%1\n"),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(Config::default());
+
+    tmux.exclude_pane_id("%1");
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(
+      tmux.panes,
+      vec![Pane {
+        content: "Pane 1\n".to_string(),
+        id: "session1:0.0".to_string(),
+        pane_index: 0,
+        tmux_pane_id: "%0".to_string(),
+        session: "session1".to_string(),
+        window: 0,
+      }]
+    );
+  }
+
+  #[test]
   fn parse_pane_with_different_indices() {
     let mut capture_outputs = BTreeMap::new();
 
