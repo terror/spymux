@@ -1,14 +1,8 @@
-use {
-  super::*,
-  ansi_to_tui::IntoText,
-  ratatui::text::{Line, Text},
-  std::borrow::Cow,
-  unicode_width::UnicodeWidthChar,
-};
+use super::*;
 
 #[derive(Debug)]
 pub(crate) struct App {
-  current_pane_id: Option<String>,
+  config: Config,
   last_refresh: Instant,
   terminal: TerminalGuard,
   tmux: Tmux,
@@ -17,20 +11,11 @@ pub(crate) struct App {
 impl App {
   const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
-  fn capture_tmux(current_pane_id: Option<&str>) -> Result<Tmux> {
-    let mut tmux = Tmux::capture()?;
-
-    if let Some(pane_id) = current_pane_id {
-      tmux.exclude_pane_id(pane_id);
-    }
-
-    Ok(tmux)
-  }
-
   fn clip_to_bottom(
     content: &str,
     max_lines: usize,
     max_columns: usize,
+    color_output: bool,
   ) -> Text<'static> {
     if max_lines == 0 || max_columns == 0 || content.is_empty() {
       return Text::default();
@@ -39,6 +24,12 @@ impl App {
     let parsed_text = content
       .into_text()
       .unwrap_or_else(|_| Text::raw(content.to_string()));
+
+    let parsed_text = if color_output {
+      parsed_text
+    } else {
+      Self::plain_text(parsed_text)
+    };
 
     let renderable_lines = Self::renderable_line_count(&parsed_text);
 
@@ -150,21 +141,41 @@ impl App {
     line.spans.iter().all(|span| span.content.is_empty())
   }
 
-  pub(crate) fn new() -> Result<Self> {
+  pub(crate) fn new(config: Config) -> Result<Self> {
     let terminal = TerminalGuard::new()?;
 
-    let current_pane_id = env::var("TMUX_PANE").ok();
+    let mut tmux = Tmux::new(config);
+
+    if let Some(pane_id) = env::var("TMUX_PANE").ok() {
+      tmux.exclude_pane_id(&pane_id);
+    }
+
+    tmux.capture()?;
 
     Ok(Self {
+      config,
       terminal,
-      tmux: Self::capture_tmux(current_pane_id.as_deref())?,
-      current_pane_id,
+      tmux,
       last_refresh: Instant::now(),
     })
   }
 
+  fn plain_text(mut text: Text<'static>) -> Text<'static> {
+    text.style = Style::default();
+
+    for line in &mut text.lines {
+      line.style = Style::default();
+
+      for span in &mut line.spans {
+        span.style = Style::default();
+      }
+    }
+
+    text
+  }
+
   fn refresh_tmux(&mut self) -> Result {
-    self.tmux = Self::capture_tmux(self.current_pane_id.as_deref())?;
+    self.tmux.capture()?;
     self.last_refresh = Instant::now();
     Ok(())
   }
@@ -248,8 +259,12 @@ impl App {
           let visible_lines = usize::from(inner_height);
           let visible_columns = usize::from(inner_width);
 
-          let clipped_content =
-            Self::clip_to_bottom(&pane.content, visible_lines, visible_columns);
+          let clipped_content = Self::clip_to_bottom(
+            &pane.content,
+            visible_lines,
+            visible_columns,
+            self.config.color_output,
+          );
 
           let widget = Paragraph::new(clipped_content)
             .wrap(Wrap { trim: false })
@@ -334,28 +349,19 @@ impl App {
   }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct RowCursor {
-  byte_index: usize,
-  line_index: usize,
-  span_index: usize,
-}
-
 #[cfg(test)]
 mod tests {
   use {
     super::*,
-    ratatui::{
-      style::{Color, Style},
-      text::Span,
-    },
+    ratatui::{style::Color, text::Span},
   };
 
   #[test]
   fn clip_to_bottom_returns_all_when_shorter() {
     let content = "line1\nline2";
+
     assert_eq!(
-      App::clip_to_bottom(content, 5, 80),
+      App::clip_to_bottom(content, 5, 80, true),
       Text::raw(content.to_string())
     );
   }
@@ -363,7 +369,7 @@ mod tests {
   #[test]
   fn clip_to_bottom_limits_to_requested_lines() {
     assert_eq!(
-      App::clip_to_bottom("line1\nline2\nline3\nline4", 2, 80),
+      App::clip_to_bottom("line1\nline2\nline3\nline4", 2, 80, true),
       Text::raw("line3\nline4".to_string())
     );
   }
@@ -371,48 +377,59 @@ mod tests {
   #[test]
   fn clip_to_bottom_handles_trailing_newlines() {
     assert_eq!(
-      App::clip_to_bottom("line1\nline2\n", 1, 80),
+      App::clip_to_bottom("line1\nline2\n", 1, 80, true),
       Text::raw("line2\n")
     );
   }
 
   #[test]
   fn clip_to_bottom_with_zero_lines_returns_empty() {
-    assert_eq!(App::clip_to_bottom("line1\nline2", 0, 80), Text::default());
+    assert_eq!(
+      App::clip_to_bottom("line1\nline2", 0, 80, true),
+      Text::default()
+    );
   }
 
   #[test]
   fn clip_to_bottom_truncates_wrapped_lines() {
     assert_eq!(
-      App::clip_to_bottom("1234567890abcdefghij", 2, 5),
+      App::clip_to_bottom("1234567890abcdefghij", 2, 5, true),
       Text::raw("abcdefghij".to_string())
     );
   }
 
   #[test]
   fn clip_to_bottom_with_zero_columns_returns_empty() {
-    assert_eq!(App::clip_to_bottom("line1\nline2", 5, 0), Text::default());
+    assert_eq!(
+      App::clip_to_bottom("line1\nline2", 5, 0, true),
+      Text::default()
+    );
   }
 
   #[test]
   fn clip_to_bottom_preserves_color_in_wrapped_line() {
-    let clipped = App::clip_to_bottom("\x1b[31mAAAAA\x1b[0m", 1, 2);
-
-    let expected = Text::from(Line::from(Span::styled(
-      "A",
-      Style::default().fg(Color::Red),
-    )));
-
-    assert_eq!(clipped, expected);
+    assert_eq!(
+      App::clip_to_bottom("\x1b[31mAAAAA\x1b[0m", 1, 2, true),
+      Text::from(Line::from(Span::styled(
+        "A",
+        Style::default().fg(Color::Red),
+      )))
+    );
   }
 
   #[test]
   fn clip_to_bottom_resets_styles_when_previous_lines_trimmed() {
-    let clipped = App::clip_to_bottom("\x1b[32mline1\x1b[0m\nline2", 1, 80);
+    assert_eq!(
+      App::clip_to_bottom("\x1b[32mline1\x1b[0m\nline2", 1, 80, true),
+      Text::from(Line::from(Span::styled("line2", Style::reset())))
+    );
+  }
 
-    let expected =
-      Text::from(Line::from(Span::styled("line2", Style::reset())));
-
-    assert_eq!(clipped, expected);
+  #[test]
+  fn clip_to_bottom_without_color_output_omits_styles() {
+    assert_eq!(
+      App::clip_to_bottom("\x1b[31mline\x1b[0m", 1, 80, false),
+      Text::raw("line".to_string())
+    );
   }
 }

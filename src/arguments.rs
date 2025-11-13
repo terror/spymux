@@ -7,7 +7,14 @@ pub(crate) struct Arguments {
 }
 
 impl Arguments {
-  pub(crate) fn run(self) -> Result {
-    App::new()?.run()
+  pub(crate) fn color_output(&self) -> bool {
+    !self.no_colors
+  }
+
+  pub(crate) fn run(&self) -> Result {
+    App::new(Config {
+      color_output: self.color_output(),
+    })?
+    .run()
   }
 }
