@@ -253,11 +253,13 @@ impl App {
         }
 
         for (pane, pane_area) in self.tmux.panes.iter().zip(pane_areas) {
-          let inner_height = pane_area.height.saturating_sub(2);
-          let inner_width = pane_area.width.saturating_sub(2);
+          let (inner_height, inner_width) = (
+            pane_area.height.saturating_sub(2),
+            pane_area.width.saturating_sub(2),
+          );
 
-          let visible_lines = usize::from(inner_height);
-          let visible_columns = usize::from(inner_width);
+          let (visible_lines, visible_columns) =
+            (usize::from(inner_height), usize::from(inner_width));
 
           let clipped_content = Self::clip_to_bottom(
             &pane.content,
@@ -430,6 +432,63 @@ mod tests {
     assert_eq!(
       App::clip_to_bottom("\x1b[31mline\x1b[0m", 1, 80, false),
       Text::raw("line".to_string())
+    );
+  }
+
+  #[test]
+  fn collect_row_starts_wraps_long_line() {
+    let text = Text::raw("abcdef".to_string());
+
+    let starts = App::collect_row_starts(&text, 3, text.lines.len());
+
+    let coordinates = starts
+      .into_iter()
+      .map(|cursor| (cursor.line_index, cursor.span_index, cursor.byte_index))
+      .collect::<Vec<(usize, usize, usize)>>();
+
+    assert_eq!(coordinates, vec![(0, 0, 0), (0, 0, 3)]);
+  }
+
+  #[test]
+  fn line_is_empty_detects_content() {
+    let mut line = Line::default();
+
+    assert!(App::line_is_empty(&line));
+
+    line.spans.push(Span::raw(""));
+    assert!(App::line_is_empty(&line));
+
+    line.spans.push(Span::raw("content"));
+    assert!(!App::line_is_empty(&line));
+  }
+
+  #[test]
+  fn plain_text_strips_styles() {
+    let mut text = Text::from(Line::from(Span::styled(
+      "styled",
+      Style::default().fg(Color::Green).bg(Color::Blue),
+    )));
+
+    text.style = Style::default().fg(Color::Red);
+
+    text.lines[0].style = Style::default().bg(Color::Yellow);
+
+    let plain = App::plain_text(text);
+
+    assert_eq!(plain.style, Style::default());
+    assert_eq!(plain.lines[0].style, Style::default());
+    assert_eq!(plain.lines[0].spans[0].style, Style::default());
+  }
+
+  #[test]
+  fn renderable_line_count_ignores_trailing_empty_lines() {
+    assert_eq!(
+      App::renderable_line_count(&Text::from(vec![
+        Line::from("line"),
+        Line::default(),
+        Line::from("")
+      ])),
+      1
     );
   }
 }
