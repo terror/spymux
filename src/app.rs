@@ -4,6 +4,7 @@ use super::*;
 pub(crate) struct App {
   config: Config,
   last_refresh: Instant,
+  pane_regions: Vec<Rect>,
   terminal: TerminalGuard,
   tmux: Tmux,
 }
@@ -133,6 +134,81 @@ impl App {
     starts
   }
 
+  fn compute_pane_regions(area: Rect, pane_count: usize) -> Vec<Rect> {
+    if pane_count == 0 {
+      return Vec::new();
+    }
+
+    let mut columns: usize = 1;
+
+    while columns.saturating_mul(columns) < pane_count {
+      columns += 1;
+    }
+
+    let rows = pane_count.div_ceil(columns);
+
+    let (rows_u32, columns_u32) = (
+      u32::try_from(rows).unwrap_or(u32::MAX),
+      u32::try_from(columns).unwrap_or(u32::MAX),
+    );
+
+    let row_constraints = vec![Constraint::Ratio(1, rows_u32); rows];
+
+    let row_chunks = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints(row_constraints)
+      .split(area);
+
+    let mut pane_areas = Vec::with_capacity(pane_count);
+
+    'outer: for row_chunk in row_chunks.iter().copied() {
+      let column_constraints = vec![Constraint::Ratio(1, columns_u32); columns];
+
+      let column_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(column_constraints)
+        .split(row_chunk);
+
+      for column_chunk in column_chunks.iter().copied() {
+        pane_areas.push(column_chunk);
+
+        if pane_areas.len() == pane_count {
+          break 'outer;
+        }
+      }
+    }
+
+    pane_areas
+  }
+
+  fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result {
+    if mouse_event.kind != MouseEventKind::Down(MouseButton::Left) {
+      return Ok(());
+    }
+
+    let Some(pane_index) =
+      self
+        .pane_regions
+        .iter()
+        .enumerate()
+        .find_map(|(index, rect)| {
+          if Self::rect_contains(*rect, mouse_event.column, mouse_event.row) {
+            Some(index)
+          } else {
+            None
+          }
+        })
+    else {
+      return Ok(());
+    };
+
+    if let Some(pane) = self.tmux.panes.get(pane_index) {
+      Tmux::focus_pane(pane)?;
+    }
+
+    Ok(())
+  }
+
   fn line_is_empty(line: &Line<'_>) -> bool {
     if line.spans.is_empty() {
       return true;
@@ -154,6 +230,7 @@ impl App {
 
     Ok(Self {
       config,
+      pane_regions: Vec::new(),
       terminal,
       tmux,
       last_refresh: Instant::now(),
@@ -172,6 +249,13 @@ impl App {
     }
 
     text
+  }
+
+  fn rect_contains(rect: Rect, column: u16, row: u16) -> bool {
+    column >= rect.x
+      && row >= rect.y
+      && column < rect.x.saturating_add(rect.width)
+      && row < rect.y.saturating_add(rect.height)
   }
 
   fn refresh_tmux(&mut self) -> Result {
@@ -202,6 +286,8 @@ impl App {
         let area = frame.area();
 
         if self.tmux.panes.is_empty() {
+          self.pane_regions.clear();
+
           let widget = Paragraph::new("No tmux panes detected")
             .block(Block::default().title("tmux panes").borders(Borders::ALL));
 
@@ -211,48 +297,13 @@ impl App {
         }
 
         let pane_count = self.tmux.panes.len();
+        let pane_areas = Self::compute_pane_regions(area, pane_count);
 
-        let mut columns: usize = 1;
+        self.pane_regions.clone_from(&pane_areas);
 
-        while columns.saturating_mul(columns) < pane_count {
-          columns += 1;
-        }
-
-        let rows = pane_count.div_ceil(columns);
-
-        let (rows_u32, columns_u32) = (
-          u32::try_from(rows).unwrap_or(u32::MAX),
-          u32::try_from(columns).unwrap_or(u32::MAX),
-        );
-
-        let row_constraints = vec![Constraint::Ratio(1, rows_u32); rows];
-
-        let row_chunks = Layout::default()
-          .direction(Direction::Vertical)
-          .constraints(row_constraints)
-          .split(area);
-
-        let mut pane_areas = Vec::with_capacity(pane_count);
-
-        'outer: for row_chunk in row_chunks.iter().copied() {
-          let column_constraints =
-            vec![Constraint::Ratio(1, columns_u32); columns];
-
-          let column_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(column_constraints)
-            .split(row_chunk);
-
-          for column_chunk in column_chunks.iter().copied() {
-            pane_areas.push(column_chunk);
-
-            if pane_areas.len() == pane_count {
-              break 'outer;
-            }
-          }
-        }
-
-        for (pane, pane_area) in self.tmux.panes.iter().zip(pane_areas) {
+        for (pane, pane_area) in
+          self.tmux.panes.iter().zip(pane_areas.into_iter())
+        {
           let (inner_height, inner_width) = (
             pane_area.height.saturating_sub(2),
             pane_area.width.saturating_sub(2),
@@ -284,12 +335,19 @@ impl App {
         .checked_sub(self.last_refresh.elapsed())
         .unwrap_or(Duration::from_millis(0));
 
-      if event::poll(timeout)?
-        && let Event::Key(key) = event::read()?
-        && key.kind == KeyEventKind::Press
-        && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
-      {
-        break;
+      if event::poll(timeout)? {
+        match event::read()? {
+          Event::Key(key)
+            if key.kind == KeyEventKind::Press
+              && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+          {
+            break;
+          }
+          Event::Mouse(mouse_event) => {
+            self.handle_mouse_event(mouse_event)?;
+          }
+          _ => {}
+        }
       }
     }
 
