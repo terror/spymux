@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub(crate) struct TerminalGuard {
-  terminal: Terminal<CrosstermBackend<Stdout>>,
+  pub(crate) terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
 impl TerminalGuard {
@@ -26,7 +26,6 @@ impl TerminalGuard {
     Ok(())
   }
 
-  #[allow(dead_code)]
   pub(crate) fn terminal_mut(
     &mut self,
   ) -> &mut Terminal<CrosstermBackend<Stdout>> {

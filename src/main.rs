@@ -1,14 +1,16 @@
 use {
   anyhow::{Error, bail},
+  app::App,
   command_runner::{CommandRunner, TmuxCommandRunner},
   crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
   pane::Pane,
   ratatui::{
-    Frame, Terminal,
+    Terminal,
     backend::CrosstermBackend,
     widgets::{Block, Borders, List, ListItem},
   },
@@ -23,58 +25,11 @@ use {
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
+mod app;
 mod command_runner;
 mod pane;
 mod terminal_guard;
 mod tmux;
-
-#[derive(Debug)]
-struct App {
-  terminal: TerminalGuard,
-  tmux: Tmux,
-}
-
-impl App {
-  fn draw(&mut self, frame: &mut Frame) {
-    let items: Vec<ListItem> = if self.tmux.panes.is_empty() {
-      vec![ListItem::new("No tmux panes detected")]
-    } else {
-      self
-        .tmux
-        .panes
-        .iter()
-        .map(|pane| {
-          let preview = pane
-            .content
-            .lines()
-            .find(|line| !line.trim().is_empty())
-            .map_or_else(
-              || "(empty pane)".to_string(),
-              |line| line.trim().to_string(),
-            );
-
-          ListItem::new(format!("{} | {preview}", pane.id))
-        })
-        .collect()
-    };
-
-    let list = List::new(items)
-      .block(Block::default().title("tmux panes").borders(Borders::ALL));
-
-    frame.render_widget(list, frame.area());
-  }
-
-  fn new() -> Result<Self> {
-    Ok(Self {
-      terminal: TerminalGuard::new()?,
-      tmux: Tmux::capture()?,
-    })
-  }
-
-  fn run(self) -> Result {
-    Ok(())
-  }
-}
 
 fn run() -> Result {
   App::new()?.run()

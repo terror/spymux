@@ -37,10 +37,6 @@ impl Tmux {
     Ok(Self { panes })
   }
 
-  pub(crate) fn panes(&self) -> &[Pane] {
-    &self.panes
-  }
-
   fn parse_and_capture_pane(
     line: &str,
     runner: &dyn CommandRunner,
@@ -123,6 +119,7 @@ mod tests {
             .get(pane_id)
             .unwrap_or(&String::new())
             .clone();
+
           let success = *self.capture_successes.get(pane_id).unwrap_or(&true);
 
           Ok(Output {
@@ -133,6 +130,37 @@ mod tests {
         }
         _ => bail!("unexpected command"),
       }
+    }
+  }
+
+  #[cfg(unix)]
+  fn exit_status(success: bool) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+
+    if success {
+      ExitStatus::from_raw(0)
+    } else {
+      ExitStatus::from_raw(1)
+    }
+  }
+
+  #[cfg(windows)]
+  fn exit_status(success: bool) -> ExitStatus {
+    use std::os::windows::process::ExitStatusExt;
+
+    if success {
+      ExitStatus::from_raw(0)
+    } else {
+      ExitStatus::from_raw(1)
+    }
+  }
+
+  #[cfg(not(any(unix, windows)))]
+  fn exit_status(success: bool) -> ExitStatus {
+    if success {
+      ExitStatus::default()
+    } else {
+      panic!("unsupported platform for tests");
     }
   }
 
@@ -338,7 +366,7 @@ mod tests {
 
     let err = Tmux::capture_with_runner(&runner).unwrap_err();
 
-    assert!(err.to_string().contains("invalid window.pane format"));
+    assert!(err.to_string().contains("invalid pane format"));
   }
 
   #[test]
@@ -401,36 +429,5 @@ mod tests {
     let err = Tmux::capture_with_runner(&InvalidUtf8Runner).unwrap_err();
 
     assert!(err.downcast_ref::<std::string::FromUtf8Error>().is_some());
-  }
-
-  #[cfg(unix)]
-  fn exit_status(success: bool) -> ExitStatus {
-    use std::os::unix::process::ExitStatusExt;
-
-    if success {
-      ExitStatus::from_raw(0)
-    } else {
-      ExitStatus::from_raw(1)
-    }
-  }
-
-  #[cfg(windows)]
-  fn exit_status(success: bool) -> ExitStatus {
-    use std::os::windows::process::ExitStatusExt;
-
-    if success {
-      ExitStatus::from_raw(0)
-    } else {
-      ExitStatus::from_raw(1)
-    }
-  }
-
-  #[cfg(not(any(unix, windows)))]
-  fn exit_status(success: bool) -> ExitStatus {
-    if success {
-      ExitStatus::default()
-    } else {
-      panic!("unsupported platform for tests");
-    }
   }
 }
