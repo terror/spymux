@@ -276,15 +276,15 @@ mod tests {
   }
 
   impl CommandRunner for MockCommandRunner {
-    fn run(&self, args: &[&str]) -> Result<Output> {
-      match args[0] {
+    fn run(&self, arguments: &[&str]) -> Result<Output> {
+      match arguments[0] {
         "list-panes" => Ok(Output {
           status: exit_status(self.list_panes_success),
           stdout: self.list_panes_output.as_bytes().to_vec(),
           stderr: vec![],
         }),
         "capture-pane" => {
-          let pane_id = args[2];
+          let pane_id = arguments[2];
 
           let content = self
             .capture_outputs
@@ -301,7 +301,8 @@ mod tests {
           })
         }
         "select-pane" => {
-          let target = args[2].to_string();
+          let target = arguments[2].to_string();
+
           self.selected_panes.borrow_mut().push(target);
 
           Ok(Output {
@@ -311,7 +312,8 @@ mod tests {
           })
         }
         "select-window" => {
-          let target = args[2].to_string();
+          let target = arguments[2].to_string();
+
           self.selected_windows.borrow_mut().push(target);
 
           Ok(Output {
@@ -325,6 +327,16 @@ mod tests {
     }
   }
 
+  impl MockCommandRunner {
+    fn selected_panes(&self) -> Vec<String> {
+      self.selected_panes.borrow().clone()
+    }
+
+    fn selected_windows(&self) -> Vec<String> {
+      self.selected_windows.borrow().clone()
+    }
+  }
+
   #[cfg(unix)]
   fn exit_status(success: bool) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
@@ -333,16 +345,6 @@ mod tests {
       ExitStatus::from_raw(0)
     } else {
       ExitStatus::from_raw(1)
-    }
-  }
-
-  impl MockCommandRunner {
-    fn selected_panes(&self) -> Vec<String> {
-      self.selected_panes.borrow().clone()
-    }
-
-    fn selected_windows(&self) -> Vec<String> {
-      self.selected_windows.borrow().clone()
     }
   }
 
@@ -705,9 +707,34 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
     let instances = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
 
     assert_eq!(instances.len(), 2);
-    assert_eq!(instances[0].pane.id, "session1:0.0");
-    assert_eq!(instances[1].pane.id, "session1:0.1");
-    assert_eq!(instances[1].current_path, "/home/other");
+
+    assert_eq!(
+      instances,
+      vec![
+        Instance {
+          current_path: "/home/project".to_string(),
+          pane: Pane {
+            content: String::new(),
+            id: "session1:0.0".to_string(),
+            pane_index: 0,
+            tmux_pane_id: "%0".to_string(),
+            session: "session1".to_string(),
+            window: 0,
+          },
+        },
+        Instance {
+          current_path: "/home/other".to_string(),
+          pane: Pane {
+            content: String::new(),
+            id: "session1:0.1".to_string(),
+            pane_index: 1,
+            tmux_pane_id: "%1".to_string(),
+            session: "session1".to_string(),
+            window: 0,
+          },
+        },
+      ]
+    );
   }
 
   #[test]
