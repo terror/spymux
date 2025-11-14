@@ -31,9 +31,7 @@ impl Tmux {
       bail!("failed to capture pane output");
     }
 
-    let content = String::from_utf8_lossy(&content_output.stdout).to_string();
-
-    pane.content = content;
+    pane.content = String::from_utf8_lossy(&content_output.stdout).to_string();
 
     Ok(pane)
   }
