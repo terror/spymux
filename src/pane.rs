@@ -29,4 +29,16 @@ impl Pane {
       "}"
     )
   }
+
+  pub(crate) fn title(&self) -> String {
+    let descriptor = self.descriptor();
+
+    let command = self.command.trim();
+
+    if command.is_empty() {
+      descriptor
+    } else {
+      format!("{descriptor} ({command})")
+    }
+  }
 }
