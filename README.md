@@ -65,7 +65,7 @@ spymux
 We support a few configuration options, as seen below:
 
 ```present cargo run -- --help
-spymux 0.1.0
+spymux 0.1.1
 
 A centralized view for all of your tmux panes
 
@@ -80,6 +80,20 @@ Options:
   -h, --help       Print help
   -V, --version    Print version
 ```
+
+### Keybindings
+
+| Action | Keys |
+| --- | --- |
+| Move up | ↑ / `k` |
+| Move down | ↓ / `j` |
+| Move left | ← / `h` |
+| Move right | → / `l` |
+| Focus highlighted pane | `enter` |
+| Hide highlighted pane | `x` |
+| Quit spymux | `q` / `esc` |
+| Toggle help | `?` |
+| Select clicked pane | left click |
 
 ## Prior Art
 
