@@ -27,7 +27,7 @@ impl Pane {
       "\"pane_index\":#{pane_index},",
       "\"path\":\"#{pane_current_path}\",",
       "\"session\":\"#{session_name}\",",
-      "\"window_index\":#{window_index},",
+      "\"window_index\":#{window_index}",
       "}"
     )
   }
