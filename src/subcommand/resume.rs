@@ -43,13 +43,7 @@ fn select_pane(panes: &[Pane]) -> Result<Option<Pane>> {
     for pane in panes {
       let path = sanitize_path(&pane.path);
 
-      writeln!(
-        &mut stdin,
-        "{}\t{}\t{}",
-        pane.descriptor(),
-        path,
-        pane.tmux_pane_id
-      )?;
+      writeln!(&mut stdin, "{}\t{}\t{}", pane.descriptor(), path, pane.id)?;
     }
   }
 
@@ -76,7 +70,7 @@ fn select_pane(panes: &[Pane]) -> Result<Option<Pane>> {
 
   let pane = panes
     .iter()
-    .find(|pane| pane.tmux_pane_id == pane_id)
+    .find(|pane| pane.id == pane_id)
     .ok_or_else(|| anyhow!("unable to locate pane {pane_id}"))?;
 
   Ok(Some(pane.clone()))

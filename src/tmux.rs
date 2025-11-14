@@ -43,7 +43,7 @@ impl Tmux {
 
     self.panes = Self::list_panes(runner)?
       .into_iter()
-      .filter(|pane| !excluded.contains(&pane.tmux_pane_id))
+      .filter(|pane| !excluded.contains(&pane.id))
       .map(|pane| self.capture_entry(pane, runner))
       .collect::<Result<Vec<_>>>()?;
 
@@ -51,7 +51,7 @@ impl Tmux {
   }
 
   pub(crate) fn exclude_pane_id(&mut self, pane_id: &str) {
-    self.panes.retain(|pane| pane.tmux_pane_id != pane_id);
+    self.panes.retain(|pane| pane.id != pane_id);
     self.excluded_pane_ids.push(pane_id.to_string());
   }
 
@@ -61,11 +61,11 @@ impl Tmux {
 
   fn focus_pane_with_runner(pane: &Pane, runner: &dyn CommandRunner) -> Result {
     Self::select_window_with_runner(
-      &format!("{}:{}", pane.session, pane.window),
+      &format!("{}:{}", pane.session, pane.window_index),
       runner,
     )?;
 
-    Self::select_pane_with_runner(&pane.tmux_pane_id, runner)
+    Self::select_pane_with_runner(&pane.id, runner)
   }
 
   fn list_panes(runner: &dyn CommandRunner) -> Result<Vec<Pane>> {
@@ -230,18 +230,18 @@ mod tests {
     }
   }
 
-  fn pane_json(
+  fn pane(
     session: &str,
     window_index: usize,
-    pane_index: usize,
-    pane_id: &str,
-    current_command: &str,
+    index: usize,
+    id: &str,
+    command: &str,
     path: &str,
   ) -> String {
     json!({
-      "command": current_command,
-      "pane_id": pane_id,
-      "pane_index": pane_index,
+      "command": command,
+      "id": id,
+      "index": index,
       "path": path,
       "session": session,
       "window_index": window_index,
@@ -303,10 +303,7 @@ mod tests {
 
     let runner = MockCommandRunner {
       capture_outputs,
-      list_panes_output: format!(
-        "{}\n",
-        pane_json("session1", 0, 0, "%0", "", "")
-      ),
+      list_panes_output: format!("{}\n", pane("session1", 0, 0, "%0", "", "")),
       ..Default::default()
     };
 
@@ -321,11 +318,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Hello World\n".to_string(),
-        pane_index: 0,
+        index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -342,9 +339,9 @@ mod tests {
       capture_outputs,
       list_panes_output: format!(
         "{}\n{}\n{}\n",
-        pane_json("session1", 0, 0, "%0", "", ""),
-        pane_json("session1", 0, 1, "%1", "", ""),
-        pane_json("session2", 1, 0, "%2", "", "")
+        pane("session1", 0, 0, "%0", "", ""),
+        pane("session1", 0, 1, "%1", "", ""),
+        pane("session2", 1, 0, "%2", "", "")
       ),
       ..Default::default()
     };
@@ -359,29 +356,29 @@ mod tests {
         Pane {
           command: String::new(),
           content: "Pane 1\n".to_string(),
-          pane_index: 0,
+          index: 0,
           path: String::new(),
           session: "session1".to_string(),
-          tmux_pane_id: "%0".to_string(),
-          window: 0,
+          id: "%0".to_string(),
+          window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "Pane 2\n".to_string(),
-          pane_index: 1,
+          index: 1,
           path: String::new(),
           session: "session1".to_string(),
-          tmux_pane_id: "%1".to_string(),
-          window: 0,
+          id: "%1".to_string(),
+          window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "Pane 3\n".to_string(),
-          pane_index: 0,
+          index: 0,
           path: String::new(),
           session: "session2".to_string(),
-          tmux_pane_id: "%2".to_string(),
-          window: 1,
+          id: "%2".to_string(),
+          window_index: 1,
         },
       ]
     );
@@ -398,8 +395,8 @@ mod tests {
       capture_outputs,
       list_panes_output: format!(
         "{}\n{}\n",
-        pane_json("session1", 0, 0, "%0", "", ""),
-        pane_json("session1", 0, 1, "%1", "", "")
+        pane("session1", 0, 0, "%0", "", ""),
+        pane("session1", 0, 1, "%1", "", "")
       ),
       ..Default::default()
     };
@@ -414,11 +411,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Pane 1\n".to_string(),
-        pane_index: 0,
+        index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -433,7 +430,7 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: format!(
         "{}\n",
-        pane_json("mysession", 5, 3, "%10", "", "")
+        pane("mysession", 5, 3, "%10", "", "")
       ),
       capture_outputs,
       ..Default::default()
@@ -448,11 +445,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Content\n".to_string(),
-        pane_index: 3,
+        index: 3,
         path: String::new(),
         session: "mysession".to_string(),
-        tmux_pane_id: "%10".to_string(),
-        window: 5,
+        id: "%10".to_string(),
+        window_index: 5,
       }]
     );
   }
@@ -466,7 +463,7 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: format!(
         "{}\n\n\n",
-        pane_json("session1", 0, 0, "%0", "", "")
+        pane("session1", 0, 0, "%0", "", "")
       ),
       capture_outputs,
       ..Default::default()
@@ -481,11 +478,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Content\n".to_string(),
-        pane_index: 0,
+        index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -500,10 +497,7 @@ mod tests {
     );
 
     let runner = MockCommandRunner {
-      list_panes_output: format!(
-        "{}\n",
-        pane_json("session1", 0, 0, "%0", "", "")
-      ),
+      list_panes_output: format!("{}\n", pane("session1", 0, 0, "%0", "", "")),
       capture_outputs,
       ..Default::default()
     };
@@ -517,11 +511,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Line 1\nLine 2\nLine 3\n".to_string(),
-        pane_index: 0,
+        index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -533,20 +527,20 @@ mod tests {
         Pane {
           command: String::new(),
           content: "one".to_string(),
-          pane_index: 0,
+          index: 0,
           path: String::new(),
           session: "session1".to_string(),
-          tmux_pane_id: "%0".to_string(),
-          window: 0,
+          id: "%0".to_string(),
+          window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "two".to_string(),
-          pane_index: 1,
+          index: 1,
           path: String::new(),
           session: "session1".to_string(),
-          tmux_pane_id: "%1".to_string(),
-          window: 0,
+          id: "%1".to_string(),
+          window_index: 0,
         },
       ],
       ..Default::default()
@@ -559,11 +553,11 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "one".to_string(),
-        pane_index: 0,
+        index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -599,11 +593,11 @@ mod tests {
     let pane = Pane {
       command: String::new(),
       content: String::new(),
-      pane_index: 2,
+      index: 2,
       path: String::new(),
       session: "mysession".to_string(),
-      tmux_pane_id: "%12".to_string(),
-      window: 3,
+      id: "%12".to_string(),
+      window_index: 3,
     };
 
     Tmux::focus_pane_with_runner(&pane, &runner).unwrap();
@@ -622,11 +616,11 @@ mod tests {
     let pane = Pane {
       command: String::new(),
       content: String::new(),
-      pane_index: 0,
+      index: 0,
       path: String::new(),
       session: "mysession".to_string(),
-      tmux_pane_id: "%3".to_string(),
-      window: 1,
+      id: "%3".to_string(),
+      window_index: 1,
     };
 
     assert_eq!(
@@ -642,9 +636,9 @@ mod tests {
     let runner = MockCommandRunner {
       list_panes_output: format!(
         "{}\n{}\n{}\n",
-        pane_json("session1", 0, 0, "%0", "spymux", "/home/project"),
-        pane_json("session1", 0, 1, "%1", "bash", "/home/other"),
-        pane_json("session1", 0, 2, "%2", "bash", "/home/skip")
+        pane("session1", 0, 0, "%0", "spymux", "/home/project"),
+        pane("session1", 0, 1, "%1", "bash", "/home/other"),
+        pane("session1", 0, 2, "%2", "bash", "/home/skip")
       ),
       ..Default::default()
     };
@@ -658,11 +652,11 @@ mod tests {
       vec![Pane {
         command: "spymux".to_string(),
         content: String::new(),
-        pane_index: 0,
+        index: 0,
         path: "/home/project".to_string(),
         session: "session1".to_string(),
-        tmux_pane_id: "%0".to_string(),
-        window: 0,
+        id: "%0".to_string(),
+        window_index: 0,
       }]
     );
   }
@@ -704,7 +698,7 @@ mod tests {
         "{}\n",
         json!({
           "command": "",
-          "pane_id": "%0",
+          "id": "%0",
           "path": "",
           "session": "session1",
           "window_index": 0,
@@ -717,7 +711,7 @@ mod tests {
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "missing field `pane_index` at line 1 column 77"
+      "missing field `index` at line 1 column 72"
     );
   }
 
@@ -729,7 +723,7 @@ mod tests {
         json!({
           "command": "",
           "pane_id": "%0",
-          "pane_index": 0,
+          "index": 0,
           "path": "",
           "session": "session1",
           "window_index": "not_a_number",
@@ -742,19 +736,19 @@ mod tests {
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid type: string \"not_a_number\", expected usize at line 1 column 104"
+      "invalid type: string \"not_a_number\", expected usize at line 1 column 99"
     );
   }
 
   #[test]
-  fn invalid_pane_index_returns_error() {
+  fn invalid_index_returns_error() {
     let runner = MockCommandRunner {
       list_panes_output: format!(
         "{}\n",
         json!({
           "command": "",
           "pane_id": "%0",
-          "pane_index": "not_a_number",
+          "index": "not_a_number",
           "path": "",
           "session": "session1",
           "window_index": 0,
@@ -767,7 +761,7 @@ mod tests {
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid type: string \"not_a_number\", expected usize at line 1 column 56"
+      "invalid type: string \"not_a_number\", expected usize at line 1 column 36"
     );
   }
 
@@ -778,10 +772,7 @@ mod tests {
     capture_successes.insert("session1:0.0".to_string(), false);
 
     let runner = MockCommandRunner {
-      list_panes_output: format!(
-        "{}\n",
-        pane_json("session1", 0, 0, "%0", "", "")
-      ),
+      list_panes_output: format!("{}\n", pane("session1", 0, 0, "%0", "", "")),
       capture_successes,
       ..Default::default()
     };
