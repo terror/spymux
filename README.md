@@ -81,6 +81,20 @@ Options:
   -V, --version    Print version
 ```
 
+### Keybindings
+
+| Action | Keys |
+| --- | --- |
+| Move up | ↑ / `k` |
+| Move down | ↓ / `j` |
+| Move left | ← / `h` |
+| Move right | → / `l` |
+| Focus highlighted pane | `enter` |
+| Hide highlighted pane | `x` |
+| Quit spymux | `q` / `esc` |
+| Toggle help | `?` |
+| Select clicked pane | left click |
+
 ## Prior Art
 
 This project is loosely inspired by tools like [Claude Squad](https://github.com/smtg-ai/claude-squad). I want less of the management aspect, and more of a simple view into how things are going
