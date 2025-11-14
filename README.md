@@ -1,5 +1,12 @@
 ## spymux
 
+[![release](https://img.shields.io/github/release/terror/spymux.svg?label=release&style=flat&labelColor=282c34&logo=github)](https://github.com/terror/spymux/releases/latest)
+[![crates.io](https://shields.io/crates/v/spymux.svg)](https://crates.io/crates/spymux)
+[![CI](https://github.com/terror/spymux/actions/workflows/ci.yaml/badge.svg)](https://github.com/terror/spymux/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/gh/terror/spymux/graph/badge.svg?token=7CH4XDXO7Z)](https://codecov.io/gh/terror/spymux)
+[![downloads](https://img.shields.io/github/downloads/terror/spymux/total.svg)](https://github.com/terror/spymux/releases)
+[![dependency status](https://deps.rs/repo/github/terror/spymux/status.svg)](https://deps.rs/repo/github/terror/spymux)
+
 **spymux** is a terminal user-interface for simultaneously watching all of your
 open [tmux](https://github.com/tmux/tmux) panes.
 
@@ -7,7 +14,7 @@ open [tmux](https://github.com/tmux/tmux) panes.
 
 Why? I pair program a fair amount with tools like [codex](https://github.com/openai/codex),
 and I run them in different projects at the same time. I'd like a tool that gives
-me a clear view into what the agents are doing, at the same time.
+me a clear view into what the agents are doing, without having to switch between them.
 
 ## Installation
 
@@ -65,7 +72,7 @@ A centralized view for all of your tmux panes
 Usage: spymux [OPTIONS] [COMMAND]
 
 Commands:
-  resume  Resume a running spymux instance via fzf
+  resume  Resume a spymux session in another directory
   help    Print this message or the help of the given subcommand(s)
 
 Options:
