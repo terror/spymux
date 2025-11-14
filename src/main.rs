@@ -1,4 +1,5 @@
 use {
+  action::Action,
   ansi_to_tui::IntoText,
   anyhow::{Context, Error, anyhow, bail},
   app::App,
@@ -15,15 +16,16 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  movement::Movement,
   options::Options,
   pane::Pane,
   ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
   },
   row_cursor::RowCursor,
   serde::Deserialize,
@@ -44,10 +46,12 @@ use {
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
+mod action;
 mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod movement;
 mod options;
 mod pane;
 mod row_cursor;
