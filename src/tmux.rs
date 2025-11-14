@@ -12,7 +12,7 @@ impl Tmux {
     self.capture_with_runner(&TmuxCommandRunner)
   }
 
-  fn capture_entry(
+  fn capture_pane(
     &self,
     mut pane: Pane,
     runner: &dyn CommandRunner,
@@ -44,7 +44,7 @@ impl Tmux {
     self.panes = Self::list_panes(runner)?
       .into_iter()
       .filter(|pane| !excluded.contains(&pane.id))
-      .map(|pane| self.capture_entry(pane, runner))
+      .map(|pane| self.capture_pane(pane, runner))
       .collect::<Result<Vec<_>>>()?;
 
     Ok(())
