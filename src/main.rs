@@ -25,7 +25,7 @@ use {
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Text},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
   },
   row_cursor::RowCursor,
   serde::Deserialize,

@@ -1,8 +1,15 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+struct KeyBinding {
+  description: &'static str,
+  keys: &'static str,
+}
+
 #[derive(Debug)]
 pub(crate) struct App {
   config: Config,
+  help_visible: bool,
   last_refresh: Instant,
   pane_regions: Vec<Rect>,
   selected_pane: Option<Pane>,
@@ -11,7 +18,64 @@ pub(crate) struct App {
 }
 
 impl App {
+  const HELP_HORIZONTAL_PADDING: usize = 8;
+  const HELP_KEY_COLUMN_WIDTH: usize = 18;
+  const HELP_MIN_WIDTH: u16 = 32;
+
+  const KEY_BINDINGS: &'static [KeyBinding] = &[
+    KeyBinding {
+      description: "Move up",
+      keys: "↑ / k",
+    },
+    KeyBinding {
+      description: "Move down",
+      keys: "↓ / j",
+    },
+    KeyBinding {
+      description: "Move left",
+      keys: "← / h",
+    },
+    KeyBinding {
+      description: "Move right",
+      keys: "→ / l",
+    },
+    KeyBinding {
+      description: "Focus highlighted pane",
+      keys: "enter",
+    },
+    KeyBinding {
+      description: "Hide highlighted pane",
+      keys: "x",
+    },
+    KeyBinding {
+      description: "Quit spymux",
+      keys: "q / esc",
+    },
+    KeyBinding {
+      description: "Toggle help",
+      keys: "?",
+    },
+    KeyBinding {
+      description: "Select clicked pane",
+      keys: "left click",
+    },
+  ];
   const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+
+  fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+
+    let x_offset = area.width.saturating_sub(width) / 2;
+    let y_offset = area.height.saturating_sub(height) / 2;
+
+    Rect::new(
+      area.x.saturating_add(x_offset),
+      area.y.saturating_add(y_offset),
+      width,
+      height,
+    )
+  }
 
   fn clip_to_bottom(
     content: &str,
@@ -209,6 +273,9 @@ impl App {
         KeyCode::Char('q') | KeyCode::Esc => {
           return Ok(Some(Action::Quit));
         }
+        KeyCode::Char('?') => {
+          self.help_visible = !self.help_visible;
+        }
         KeyCode::Char('x') => {
           self.hide_selected_pane();
         }
@@ -264,6 +331,41 @@ impl App {
     self.select_pane_at_index(pane_index);
 
     Ok(())
+  }
+
+  fn help_area(area: Rect, line_count: usize, max_line_width: usize) -> Rect {
+    let content_width =
+      max_line_width.saturating_add(Self::HELP_HORIZONTAL_PADDING);
+
+    let mut width = u16::try_from(content_width).unwrap_or(u16::MAX);
+
+    width = width
+      .max(Self::HELP_MIN_WIDTH.min(area.width))
+      .min(area.width.max(1));
+
+    let mut height = u16::try_from(line_count)
+      .unwrap_or(u16::MAX)
+      .saturating_add(2);
+
+    height = height.min(area.height.max(1));
+
+    Self::centered_rect(width, height, area)
+  }
+
+  fn help_text() -> Text<'static> {
+    Text::from(
+      Self::KEY_BINDINGS
+        .iter()
+        .map(|binding| {
+          Line::from(format!(
+            "{:<width$} {}",
+            binding.keys,
+            binding.description,
+            width = Self::HELP_KEY_COLUMN_WIDTH
+          ))
+        })
+        .collect::<Vec<Line<'static>>>(),
+    )
   }
 
   fn hide_selected_pane(&mut self) {
@@ -337,6 +439,7 @@ impl App {
       selected_pane: tmux.panes.first().cloned(),
       terminal,
       tmux,
+      help_visible: false,
     })
   }
 
@@ -539,7 +642,7 @@ impl App {
     let terminal = self.terminal.terminal_mut();
 
     terminal.draw(|frame| {
-      let area = frame.area();
+      let body_area = frame.area();
 
       if self.tmux.panes.is_empty() {
         self.pane_regions.clear();
@@ -551,53 +654,72 @@ impl App {
             .border_type(BorderType::Rounded),
         );
 
-        frame.render_widget(widget, area);
+        frame.render_widget(widget, body_area);
+      } else {
+        let pane_count = self.tmux.panes.len();
+        let pane_areas = Self::compute_pane_regions(body_area, pane_count);
 
-        return;
+        self.pane_regions.clone_from(&pane_areas);
+
+        for (pane_index, pane) in self.tmux.panes.iter().enumerate() {
+          let pane_area = pane_areas[pane_index];
+
+          let (inner_height, inner_width) = (
+            pane_area.height.saturating_sub(2),
+            pane_area.width.saturating_sub(2),
+          );
+
+          let (visible_lines, visible_columns) =
+            (usize::from(inner_height), usize::from(inner_width));
+
+          let clipped_content = Self::clip_to_bottom(
+            &pane.content,
+            visible_lines,
+            visible_columns,
+            self.config.color_output,
+          );
+
+          let mut block = Block::default()
+            .title(pane.title())
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded);
+
+          let is_selected = self
+            .selected_pane
+            .as_ref()
+            .is_some_and(|selected| selected.id == pane.id);
+
+          if is_selected {
+            block = block.border_style(Style::default().fg(Color::Cyan));
+          }
+
+          let widget = Paragraph::new(clipped_content)
+            .wrap(Wrap { trim: false })
+            .block(block);
+
+          frame.render_widget(widget, pane_area);
+        }
       }
 
-      let pane_count = self.tmux.panes.len();
-      let pane_areas = Self::compute_pane_regions(area, pane_count);
+      if self.help_visible && body_area.width > 0 && body_area.height > 0 {
+        let help_text = Self::help_text();
+        let line_count = help_text.lines.len();
+        let max_line_width =
+          help_text.lines.iter().map(Line::width).max().unwrap_or(0);
 
-      self.pane_regions.clone_from(&pane_areas);
+        let help_area = Self::help_area(body_area, line_count, max_line_width);
 
-      for (pane_index, pane) in self.tmux.panes.iter().enumerate() {
-        let pane_area = pane_areas[pane_index];
+        let help_widget = Paragraph::new(help_text)
+          .block(
+            Block::default()
+              .title("Help")
+              .borders(Borders::ALL)
+              .border_type(BorderType::Rounded),
+          )
+          .wrap(Wrap { trim: false });
 
-        let (inner_height, inner_width) = (
-          pane_area.height.saturating_sub(2),
-          pane_area.width.saturating_sub(2),
-        );
-
-        let (visible_lines, visible_columns) =
-          (usize::from(inner_height), usize::from(inner_width));
-
-        let clipped_content = Self::clip_to_bottom(
-          &pane.content,
-          visible_lines,
-          visible_columns,
-          self.config.color_output,
-        );
-
-        let mut block = Block::default()
-          .title(pane.title())
-          .borders(Borders::ALL)
-          .border_type(BorderType::Rounded);
-
-        let is_selected = self
-          .selected_pane
-          .as_ref()
-          .is_some_and(|selected| selected.id == pane.id);
-
-        if is_selected {
-          block = block.border_style(Style::default().fg(Color::Cyan));
-        }
-
-        let widget = Paragraph::new(clipped_content)
-          .wrap(Wrap { trim: false })
-          .block(block);
-
-        frame.render_widget(widget, pane_area);
+        frame.render_widget(Clear, help_area);
+        frame.render_widget(help_widget, help_area);
       }
     })?;
 
