@@ -8,12 +8,12 @@ pub(crate) fn run() -> Result {
 
   let instances = Tmux::list_spymux_instances()?;
 
-  let candidates: Vec<_> = instances
+  let candidates = instances
     .into_iter()
     .filter(|instance| {
       !is_current_directory(&current_dir, instance.current_path.as_str())
     })
-    .collect();
+    .collect::<Vec<_>>();
 
   if candidates.is_empty() {
     bail!("no running spymux panes were found");
@@ -31,9 +31,7 @@ pub(crate) fn run() -> Result {
   Ok(())
 }
 
-fn select_instance(
-  instances: &[SpymuxInstance],
-) -> Result<Option<SpymuxInstance>> {
+fn select_instance(instances: &[Instance]) -> Result<Option<Instance>> {
   let mut child = Command::new("fzf")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())

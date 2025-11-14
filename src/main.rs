@@ -15,6 +15,7 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  instance::Instance,
   options::Options,
   pane::Pane,
   ratatui::{
@@ -37,7 +38,7 @@ use {
   },
   subcommand::Subcommand,
   terminal_guard::TerminalGuard,
-  tmux::{SpymuxInstance, Tmux},
+  tmux::Tmux,
   unicode_width::UnicodeWidthChar,
 };
 
@@ -47,6 +48,7 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod instance;
 mod options;
 mod pane;
 mod row_cursor;

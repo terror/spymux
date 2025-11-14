@@ -63,13 +63,13 @@ impl Tmux {
     Self::select_pane_with_runner(&pane.tmux_pane_id, runner)
   }
 
-  pub(crate) fn list_spymux_instances() -> Result<Vec<SpymuxInstance>> {
+  pub(crate) fn list_spymux_instances() -> Result<Vec<Instance>> {
     Self::list_spymux_instances_with_runner(&TmuxCommandRunner)
   }
 
   fn list_spymux_instances_with_runner(
     runner: &dyn CommandRunner,
-  ) -> Result<Vec<SpymuxInstance>> {
+  ) -> Result<Vec<Instance>> {
     const FORMAT: &str = concat!(
       "#{session_name}:#{window_index}.#{pane_index}\t",
       "#{pane_id}\t",
@@ -103,6 +103,7 @@ impl Tmux {
 
       let current_command = parts.next().unwrap_or_default();
       let start_command = parts.next().unwrap_or_default();
+
       let path = parts.next().unwrap_or_default();
 
       if !Self::pane_runs_spymux(current_command, start_command) {
@@ -111,7 +112,7 @@ impl Tmux {
 
       let (session, window, pane_index) = Self::parse_descriptor(descriptor)?;
 
-      instances.push(SpymuxInstance {
+      instances.push(Instance {
         current_path: path.to_string(),
         pane: Pane {
           content: String::new(),
@@ -239,12 +240,6 @@ impl Tmux {
 
     Ok(())
   }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SpymuxInstance {
-  pub(crate) current_path: String,
-  pub(crate) pane: Pane,
 }
 
 #[cfg(test)]
