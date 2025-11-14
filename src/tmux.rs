@@ -31,9 +31,7 @@ impl Tmux {
       bail!("failed to capture pane output");
     }
 
-    let content = String::from_utf8_lossy(&content_output.stdout).to_string();
-
-    pane.content = content;
+    pane.content = String::from_utf8_lossy(&content_output.stdout).to_string();
 
     Ok(pane)
   }
@@ -84,17 +82,20 @@ impl Tmux {
       .collect()
   }
 
-  pub(crate) fn list_spymux_instances() -> Result<Vec<Pane>> {
-    Self::list_spymux_instances_with_runner(&TmuxCommandRunner)
+  pub(crate) fn list_panes_by_command(command: &str) -> Result<Vec<Pane>> {
+    Self::list_panes_by_command_with_runner(command, &TmuxCommandRunner)
   }
 
-  fn list_spymux_instances_with_runner(
+  fn list_panes_by_command_with_runner(
+    command: &str,
     runner: &dyn CommandRunner,
   ) -> Result<Vec<Pane>> {
+    let command = command.trim();
+
     Ok(
       Self::list_panes(runner)?
         .into_iter()
-        .filter(|pane| pane.command.trim().eq_ignore_ascii_case("spymux"))
+        .filter(|pane| pane.command.trim().eq_ignore_ascii_case(command))
         .collect(),
     )
   }
@@ -632,7 +633,7 @@ mod tests {
   }
 
   #[test]
-  fn list_spymux_instances_with_runner_filters_entries() {
+  fn list_panes_by_command_with_runner_filters_entries() {
     let runner = MockCommandRunner {
       list_panes_output: format!(
         "{}\n{}\n{}\n",
@@ -643,7 +644,8 @@ mod tests {
       ..Default::default()
     };
 
-    let panes = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
+    let panes =
+      Tmux::list_panes_by_command_with_runner("spymux", &runner).unwrap();
 
     assert_eq!(panes.len(), 1);
 
@@ -651,6 +653,36 @@ mod tests {
       panes,
       vec![Pane {
         command: "spymux".to_string(),
+        content: String::new(),
+        id: "%0".to_string(),
+        index: 0,
+        path: "/home/project".to_string(),
+        session: "session1".to_string(),
+        window_index: 0,
+      }]
+    );
+  }
+
+  #[test]
+  fn list_panes_by_command_is_case_insensitive() {
+    let runner = MockCommandRunner {
+      list_panes_output: format!(
+        "{}\n{}\n",
+        pane("session1", 0, 0, "%0", "SpYmUx", "/home/project"),
+        pane("session1", 0, 1, "%1", "bash", "/home/other")
+      ),
+      ..Default::default()
+    };
+
+    let panes =
+      Tmux::list_panes_by_command_with_runner("SPYMUx", &runner).unwrap();
+
+    assert_eq!(panes.len(), 1);
+
+    assert_eq!(
+      panes,
+      vec![Pane {
+        command: "SpYmUx".to_string(),
         content: String::new(),
         id: "%0".to_string(),
         index: 0,
