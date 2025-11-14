@@ -15,6 +15,7 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  movement::Movement,
   options::Options,
   pane::Pane,
   ratatui::{
@@ -48,6 +49,7 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod movement;
 mod options;
 mod pane;
 mod row_cursor;

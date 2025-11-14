@@ -1,13 +1,5 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug)]
-enum Movement {
-  Down,
-  Left,
-  Right,
-  Up,
-}
-
 #[derive(Debug)]
 pub(crate) struct App {
   config: Config,
