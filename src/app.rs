@@ -209,7 +209,10 @@ impl App {
         KeyCode::Char('q') | KeyCode::Esc => {
           return Ok(Some(Action::Quit));
         }
-        KeyCode::Char('h') | KeyCode::Left => {
+        KeyCode::Char('h') => {
+          self.hide_selected_pane();
+        }
+        KeyCode::Left => {
           self.move_selection(Movement::Left)?;
         }
         KeyCode::Char('j') | KeyCode::Down => {
@@ -261,6 +264,16 @@ impl App {
     self.select_pane_at_index(pane_index);
 
     Ok(())
+  }
+
+  fn hide_selected_pane(&mut self) {
+    let Some(selected) = self.selected_pane.clone() else {
+      return;
+    };
+
+    self.tmux.exclude_pane_id(&selected.id);
+
+    self.ensure_selection();
   }
 
   fn line_is_empty(line: &Line<'_>) -> bool {
@@ -531,8 +544,12 @@ impl App {
       if self.tmux.panes.is_empty() {
         self.pane_regions.clear();
 
-        let widget = Paragraph::new("No tmux panes detected")
-          .block(Block::default().title("tmux panes").borders(Borders::ALL));
+        let widget = Paragraph::new("No tmux panes detected").block(
+          Block::default()
+            .title(env!("CARGO_PKG_NAME"))
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded),
+        );
 
         frame.render_widget(widget, area);
 
@@ -564,7 +581,8 @@ impl App {
 
         let mut block = Block::default()
           .title(pane.descriptor())
-          .borders(Borders::ALL);
+          .borders(Borders::ALL)
+          .border_type(BorderType::Rounded);
 
         let is_selected = self
           .selected_pane
@@ -572,11 +590,7 @@ impl App {
           .is_some_and(|selected| selected.id == pane.id);
 
         if is_selected {
-          block = block
-            .border_type(BorderType::Thick)
-            .border_style(Style::default().fg(Color::Cyan));
-        } else {
-          block = block.border_type(BorderType::Plain);
+          block = block.border_style(Style::default().fg(Color::Cyan));
         }
 
         let widget = Paragraph::new(clipped_content)
