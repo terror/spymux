@@ -197,8 +197,9 @@ impl App {
     }
   }
 
-  fn focus_pane_at_index(&mut self, pane_index: usize) -> Result {
-    let Some(pane) = self.tmux.panes.get(pane_index) else {
+  fn focus_pane(&mut self, pane_id: &str) -> Result {
+    let Some(pane) = self.tmux.panes.iter().find(|pane| pane.id == pane_id)
+    else {
       return Ok(());
     };
 
@@ -207,6 +208,42 @@ impl App {
     self.selected_pane_id = Some(pane.id.clone());
 
     Ok(())
+  }
+
+  fn handle_event(&mut self, event: Event) -> Result<Option<Action>> {
+    match event {
+      Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => {
+          return Ok(Some(Action::Quit));
+        }
+        KeyCode::Char('h') | KeyCode::Left => {
+          self.move_selection(Movement::Left)?;
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+          self.move_selection(Movement::Down)?;
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+          self.move_selection(Movement::Up)?;
+        }
+        KeyCode::Char('l') | KeyCode::Right => {
+          self.move_selection(Movement::Right)?;
+        }
+        KeyCode::Enter => {
+          if let Some(index) = self.selected_pane_index()
+            && let Some(pane) = self.tmux.panes.get(index)
+          {
+            return Ok(Some(Action::FocusPane(pane.id.clone())));
+          }
+        }
+        _ => {}
+      },
+      Event::Mouse(mouse_event) => {
+        self.handle_mouse_event(mouse_event)?;
+      }
+      _ => {}
+    }
+
+    Ok(None)
   }
 
   fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result {
@@ -396,106 +433,22 @@ impl App {
 
   pub(crate) fn run(mut self) -> Result {
     loop {
-      if self.last_refresh.elapsed() >= Self::REFRESH_INTERVAL {
-        self.refresh_tmux()?;
-      }
-
-      let terminal = self.terminal.terminal_mut();
-
-      terminal.draw(|frame| {
-        let area = frame.area();
-
-        if self.tmux.panes.is_empty() {
-          self.pane_regions.clear();
-
-          let widget = Paragraph::new("No tmux panes detected")
-            .block(Block::default().title("tmux panes").borders(Borders::ALL));
-
-          frame.render_widget(widget, area);
-
-          return;
-        }
-
-        let pane_count = self.tmux.panes.len();
-        let pane_areas = Self::compute_pane_regions(area, pane_count);
-
-        self.pane_regions.clone_from(&pane_areas);
-
-        for (pane_index, pane) in self.tmux.panes.iter().enumerate() {
-          let pane_area = pane_areas[pane_index];
-
-          let (inner_height, inner_width) = (
-            pane_area.height.saturating_sub(2),
-            pane_area.width.saturating_sub(2),
-          );
-
-          let (visible_lines, visible_columns) =
-            (usize::from(inner_height), usize::from(inner_width));
-
-          let clipped_content = Self::clip_to_bottom(
-            &pane.content,
-            visible_lines,
-            visible_columns,
-            self.config.color_output,
-          );
-
-          let mut block = Block::default()
-            .title(pane.descriptor())
-            .borders(Borders::ALL);
-
-          if self
-            .selected_pane_id
-            .as_deref()
-            .is_some_and(|id| id == pane.id)
-          {
-            block = block
-              .border_type(BorderType::Thick)
-              .border_style(Style::default().fg(Color::Cyan));
-          } else {
-            block = block.border_type(BorderType::Plain);
-          }
-
-          let widget = Paragraph::new(clipped_content)
-            .wrap(Wrap { trim: false })
-            .block(block);
-
-          frame.render_widget(widget, pane_area);
-        }
-      })?;
+      self.tick()?;
 
       let timeout = Self::REFRESH_INTERVAL
         .checked_sub(self.last_refresh.elapsed())
         .unwrap_or(Duration::from_millis(0));
 
       if event::poll(timeout)? {
-        match event::read()? {
-          Event::Key(key) if key.kind == KeyEventKind::Press => {
-            match key.code {
-              KeyCode::Char('q') | KeyCode::Esc => break,
-              KeyCode::Char('h') | KeyCode::Left => {
-                self.move_selection(Movement::Left)?;
-              }
-              KeyCode::Char('j') | KeyCode::Down => {
-                self.move_selection(Movement::Down)?;
-              }
-              KeyCode::Char('k') | KeyCode::Up => {
-                self.move_selection(Movement::Up)?;
-              }
-              KeyCode::Char('l') | KeyCode::Right => {
-                self.move_selection(Movement::Right)?;
-              }
-              KeyCode::Enter => {
-                if let Some(index) = self.selected_pane_index() {
-                  self.focus_pane_at_index(index)?;
-                }
-              }
-              _ => {}
+        let event = event::read()?;
+
+        if let Some(action) = self.handle_event(event)? {
+          match action {
+            Action::Quit => break,
+            Action::FocusPane(pane_id) => {
+              self.focus_pane(&pane_id)?;
             }
           }
-          Event::Mouse(mouse_event) => {
-            self.handle_mouse_event(mouse_event)?;
-          }
-          _ => {}
         }
       }
     }
@@ -571,6 +524,77 @@ impl App {
       style: text.style,
       lines,
     }
+  }
+
+  fn tick(&mut self) -> Result {
+    if self.last_refresh.elapsed() >= Self::REFRESH_INTERVAL {
+      self.refresh_tmux()?;
+    }
+
+    let terminal = self.terminal.terminal_mut();
+
+    terminal.draw(|frame| {
+      let area = frame.area();
+
+      if self.tmux.panes.is_empty() {
+        self.pane_regions.clear();
+
+        let widget = Paragraph::new("No tmux panes detected")
+          .block(Block::default().title("tmux panes").borders(Borders::ALL));
+
+        frame.render_widget(widget, area);
+
+        return;
+      }
+
+      let pane_count = self.tmux.panes.len();
+      let pane_areas = Self::compute_pane_regions(area, pane_count);
+
+      self.pane_regions.clone_from(&pane_areas);
+
+      for (pane_index, pane) in self.tmux.panes.iter().enumerate() {
+        let pane_area = pane_areas[pane_index];
+
+        let (inner_height, inner_width) = (
+          pane_area.height.saturating_sub(2),
+          pane_area.width.saturating_sub(2),
+        );
+
+        let (visible_lines, visible_columns) =
+          (usize::from(inner_height), usize::from(inner_width));
+
+        let clipped_content = Self::clip_to_bottom(
+          &pane.content,
+          visible_lines,
+          visible_columns,
+          self.config.color_output,
+        );
+
+        let mut block = Block::default()
+          .title(pane.descriptor())
+          .borders(Borders::ALL);
+
+        if self
+          .selected_pane_id
+          .as_deref()
+          .is_some_and(|id| id == pane.id)
+        {
+          block = block
+            .border_type(BorderType::Thick)
+            .border_style(Style::default().fg(Color::Cyan));
+        } else {
+          block = block.border_type(BorderType::Plain);
+        }
+
+        let widget = Paragraph::new(clipped_content)
+          .wrap(Wrap { trim: false })
+          .block(block);
+
+        frame.render_widget(widget, pane_area);
+      }
+    })?;
+
+    Ok(())
   }
 }
 

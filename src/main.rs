@@ -1,4 +1,5 @@
 use {
+  action::Action,
   ansi_to_tui::IntoText,
   anyhow::{Context, Error, anyhow, bail},
   app::App,
@@ -45,6 +46,7 @@ use {
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
+mod action;
 mod app;
 mod arguments;
 mod command_runner;
