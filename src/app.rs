@@ -1,10 +1,19 @@
 use super::*;
 
+#[derive(Clone, Copy, Debug)]
+enum Movement {
+  Down,
+  Left,
+  Right,
+  Up,
+}
+
 #[derive(Debug)]
 pub(crate) struct App {
   config: Config,
   last_refresh: Instant,
   pane_regions: Vec<Rect>,
+  selected_pane_id: Option<String>,
   terminal: TerminalGuard,
   tmux: Tmux,
 }
@@ -181,6 +190,33 @@ impl App {
     pane_areas
   }
 
+  fn ensure_selection(&mut self) {
+    if self.tmux.panes.is_empty() {
+      self.selected_pane_id = None;
+      return;
+    }
+
+    if self.selected_pane_index().is_some() {
+      return;
+    }
+
+    if let Some(pane) = self.tmux.panes.first() {
+      self.selected_pane_id = Some(pane.id.clone());
+    }
+  }
+
+  fn focus_pane_at_index(&mut self, pane_index: usize) -> Result {
+    let Some(pane) = self.tmux.panes.get(pane_index) else {
+      return Ok(());
+    };
+
+    Tmux::focus_pane(pane)?;
+
+    self.selected_pane_id = Some(pane.id.clone());
+
+    Ok(())
+  }
+
   fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result {
     if mouse_event.kind != MouseEventKind::Down(MouseButton::Left) {
       return Ok(());
@@ -202,9 +238,7 @@ impl App {
       return Ok(());
     };
 
-    if let Some(pane) = self.tmux.panes.get(pane_index) {
-      Tmux::focus_pane(pane)?;
-    }
+    self.select_pane_at_index(pane_index);
 
     Ok(())
   }
@@ -215,6 +249,32 @@ impl App {
     }
 
     line.spans.iter().all(|span| span.content.is_empty())
+  }
+
+  fn move_selection(&mut self, direction: Movement) -> Result {
+    if self.tmux.panes.is_empty() {
+      return Ok(());
+    }
+
+    self.ensure_selection();
+
+    if self.pane_regions.len() != self.tmux.panes.len() {
+      return Ok(());
+    }
+
+    let Some(current_index) = self.selected_pane_index() else {
+      return Ok(());
+    };
+
+    let Some(next_index) =
+      Self::pane_in_direction(&self.pane_regions, current_index, direction)
+    else {
+      return Ok(());
+    };
+
+    self.select_pane_at_index(next_index);
+
+    Ok(())
   }
 
   pub(crate) fn new(config: Config) -> Result<Self> {
@@ -228,13 +288,80 @@ impl App {
 
     tmux.capture()?;
 
+    let selected_pane_id = tmux.panes.first().map(|pane| pane.id.clone());
+
     Ok(Self {
       config,
       pane_regions: Vec::new(),
+      selected_pane_id,
       terminal,
       tmux,
       last_refresh: Instant::now(),
     })
+  }
+
+  fn pane_center(rect: Rect) -> (i32, i32) {
+    (
+      i32::from(rect.x) + i32::from(rect.width) / 2,
+      i32::from(rect.y) + i32::from(rect.height) / 2,
+    )
+  }
+
+  fn pane_in_direction(
+    pane_regions: &[Rect],
+    current_index: usize,
+    direction: Movement,
+  ) -> Option<usize> {
+    let current_rect = pane_regions.get(current_index).copied()?;
+
+    let (current_x, current_y) = Self::pane_center(current_rect);
+
+    let mut best: Option<(i32, i32, usize)> = None;
+
+    for (index, rect) in pane_regions.iter().copied().enumerate() {
+      if index == current_index {
+        continue;
+      }
+
+      let (candidate_x, candidate_y) = Self::pane_center(rect);
+
+      let directional = match direction {
+        Movement::Left if candidate_x < current_x => Some((
+          current_x - candidate_x,
+          (candidate_y - current_y).abs(),
+          index,
+        )),
+        Movement::Right if candidate_x > current_x => Some((
+          candidate_x - current_x,
+          (candidate_y - current_y).abs(),
+          index,
+        )),
+        Movement::Up if candidate_y < current_y => Some((
+          current_y - candidate_y,
+          (candidate_x - current_x).abs(),
+          index,
+        )),
+        Movement::Down if candidate_y > current_y => Some((
+          candidate_y - current_y,
+          (candidate_x - current_x).abs(),
+          index,
+        )),
+        _ => None,
+      };
+
+      let Some(candidate) = directional else {
+        continue;
+      };
+
+      if best.is_none_or(|best_candidate| {
+        candidate.0 < best_candidate.0
+          || (candidate.0 == best_candidate.0 && candidate.1 < best_candidate.1)
+      }) {
+        best = Some(candidate);
+      }
+    }
+
+    best.map(|(_, _, index)| index)
   }
 
   fn plain_text(mut text: Text<'static>) -> Text<'static> {
@@ -260,6 +387,7 @@ impl App {
 
   fn refresh_tmux(&mut self) -> Result {
     self.tmux.capture()?;
+    self.ensure_selection();
     self.last_refresh = Instant::now();
     Ok(())
   }
@@ -301,9 +429,9 @@ impl App {
 
         self.pane_regions.clone_from(&pane_areas);
 
-        for (pane, pane_area) in
-          self.tmux.panes.iter().zip(pane_areas.into_iter())
-        {
+        for (pane_index, pane) in self.tmux.panes.iter().enumerate() {
+          let pane_area = pane_areas[pane_index];
+
           let (inner_height, inner_width) = (
             pane_area.height.saturating_sub(2),
             pane_area.width.saturating_sub(2),
@@ -319,13 +447,25 @@ impl App {
             self.config.color_output,
           );
 
+          let mut block = Block::default()
+            .title(pane.descriptor())
+            .borders(Borders::ALL);
+
+          if self
+            .selected_pane_id
+            .as_deref()
+            .is_some_and(|id| id == pane.id)
+          {
+            block = block
+              .border_type(BorderType::Thick)
+              .border_style(Style::default().fg(Color::Cyan));
+          } else {
+            block = block.border_type(BorderType::Plain);
+          }
+
           let widget = Paragraph::new(clipped_content)
             .wrap(Wrap { trim: false })
-            .block(
-              Block::default()
-                .title(pane.descriptor())
-                .borders(Borders::ALL),
-            );
+            .block(block);
 
           frame.render_widget(widget, pane_area);
         }
@@ -337,11 +477,28 @@ impl App {
 
       if event::poll(timeout)? {
         match event::read()? {
-          Event::Key(key)
-            if key.kind == KeyEventKind::Press
-              && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
-          {
-            break;
+          Event::Key(key) if key.kind == KeyEventKind::Press => {
+            match key.code {
+              KeyCode::Char('q') | KeyCode::Esc => break,
+              KeyCode::Char('h') | KeyCode::Left => {
+                self.move_selection(Movement::Left)?;
+              }
+              KeyCode::Char('j') | KeyCode::Down => {
+                self.move_selection(Movement::Down)?;
+              }
+              KeyCode::Char('k') | KeyCode::Up => {
+                self.move_selection(Movement::Up)?;
+              }
+              KeyCode::Char('l') | KeyCode::Right => {
+                self.move_selection(Movement::Right)?;
+              }
+              KeyCode::Enter => {
+                if let Some(index) = self.selected_pane_index() {
+                  self.focus_pane_at_index(index)?;
+                }
+              }
+              _ => {}
+            }
           }
           Event::Mouse(mouse_event) => {
             self.handle_mouse_event(mouse_event)?;
@@ -352,6 +509,22 @@ impl App {
     }
 
     Ok(())
+  }
+
+  fn select_pane_at_index(&mut self, pane_index: usize) {
+    if let Some(pane) = self.tmux.panes.get(pane_index) {
+      self.selected_pane_id = Some(pane.id.clone());
+    }
+  }
+
+  fn selected_pane_index(&self) -> Option<usize> {
+    let selected_id = self.selected_pane_id.as_deref()?;
+
+    self
+      .tmux
+      .panes
+      .iter()
+      .position(|pane| pane.id == selected_id)
   }
 
   fn slice_text_from(text: &Text<'static>, cursor: RowCursor) -> Text<'static> {
@@ -547,6 +720,30 @@ mod tests {
         Line::from("")
       ])),
       1
+    );
+  }
+
+  #[test]
+  fn pane_in_direction_moves_right() {
+    let pane_regions = vec![Rect::new(0, 0, 10, 5), Rect::new(12, 0, 10, 5)];
+
+    assert_eq!(
+      App::pane_in_direction(&pane_regions, 0, Movement::Right),
+      Some(1)
+    );
+  }
+
+  #[test]
+  fn pane_in_direction_handles_missing_columns() {
+    let pane_regions = vec![
+      Rect::new(0, 0, 10, 5),
+      Rect::new(12, 0, 10, 5),
+      Rect::new(0, 8, 10, 5),
+    ];
+
+    assert_eq!(
+      App::pane_in_direction(&pane_regions, 1, Movement::Down),
+      Some(2)
     );
   }
 }
