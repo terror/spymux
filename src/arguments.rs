@@ -17,21 +17,17 @@ use super::*;
 )]
 pub(crate) struct Arguments {
   #[clap(flatten)]
-  options: Options,
+  pub(crate) options: Options,
   #[clap(subcommand)]
-  subcommand: Option<Subcommand>,
+  pub(crate) subcommand: Option<Subcommand>,
 }
 
 impl Arguments {
-  pub(crate) fn color_output(&self) -> bool {
-    !self.options.no_colors
-  }
-
   pub(crate) fn run(self) -> Result {
     match self.subcommand {
       Some(subcommand) => subcommand.run(),
       None => App::new(Config {
-        color_output: self.color_output(),
+        color_output: !self.options.no_colors,
       })?
       .run(),
     }

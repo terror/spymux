@@ -60,7 +60,7 @@ fn main() {
   let arguments = Arguments::parse();
 
   if let Err(error) = arguments.clone().run() {
-    let use_color = io::stderr().is_terminal() && arguments.color_output();
+    let use_color = io::stderr().is_terminal() && !arguments.options.no_colors;
 
     if use_color {
       eprintln!("{} {error}", "error:".bold().red());
