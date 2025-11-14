@@ -4,6 +4,7 @@ mod resume;
 
 #[derive(Debug, Clone, Parser)]
 pub(crate) enum Subcommand {
+  #[clap(about = "Resume a spymux session in another directory")]
   Resume,
 }
 
