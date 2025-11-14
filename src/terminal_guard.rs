@@ -21,12 +21,15 @@ impl TerminalGuard {
 
   pub(crate) fn restore(&mut self) -> Result {
     terminal::disable_raw_mode()?;
+
     execute!(
       self.terminal.backend_mut(),
       LeaveAlternateScreen,
       DisableMouseCapture
     )?;
+
     self.terminal.show_cursor()?;
+
     Ok(())
   }
 

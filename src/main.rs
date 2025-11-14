@@ -15,7 +15,6 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
-  instance::Instance,
   options::Options,
   pane::Pane,
   ratatui::{
@@ -27,6 +26,7 @@ use {
     widgets::{Block, Borders, Paragraph, Wrap},
   },
   row_cursor::RowCursor,
+  serde::Deserialize,
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
@@ -48,7 +48,6 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
-mod instance;
 mod options;
 mod pane;
 mod row_cursor;
