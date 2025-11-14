@@ -16,6 +16,7 @@ use {
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
   instance::Instance,
+  list_entry::ListEntry,
   options::Options,
   pane::Pane,
   ratatui::{
@@ -27,6 +28,7 @@ use {
     widgets::{Block, Borders, Paragraph, Wrap},
   },
   row_cursor::RowCursor,
+  serde::Deserialize,
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
@@ -49,6 +51,7 @@ mod arguments;
 mod command_runner;
 mod config;
 mod instance;
+mod list_entry;
 mod options;
 mod pane;
 mod row_cursor;

@@ -18,6 +18,8 @@ anyhow = "1.0.100"
 clap = { version = "4.5.51", features = ["derive"] }
 crossterm = "0.29.0"
 ratatui = "0.29.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 unicode-width = "0.2.0"
 
 [lints.rust]

@@ -12,35 +12,45 @@ impl Tmux {
     self.capture_with_runner(&TmuxCommandRunner)
   }
 
+  fn capture_entry(
+    &self,
+    entry: &ListEntry,
+    runner: &dyn CommandRunner,
+  ) -> Result<Pane> {
+    let descriptor = entry.descriptor();
+
+    let mut capture_cmd = vec!["capture-pane", "-t", descriptor.as_str(), "-p"];
+
+    if self.include_escape_codes {
+      capture_cmd.push("-e");
+    }
+
+    let content_output = runner.run(&capture_cmd)?;
+
+    if !content_output.status.success() {
+      bail!("failed to capture pane output");
+    }
+
+    let content = String::from_utf8_lossy(&content_output.stdout).to_string();
+
+    Ok(Pane {
+      content,
+      id: descriptor,
+      pane_index: entry.pane_index,
+      tmux_pane_id: entry.pane_id.clone(),
+      session: entry.session.clone(),
+      window: entry.window_index,
+    })
+  }
+
   fn capture_with_runner(&mut self, runner: &dyn CommandRunner) -> Result {
-    const FORMAT: &str =
-      "#{session_name}:#{window_index}.#{pane_index}\t#{pane_id}";
+    let excluded = &self.excluded_pane_ids;
 
-    let output = runner.run(&["list-panes", "-a", "-F", FORMAT])?;
-
-    if !output.status.success() {
-      bail!("failed to list tmux panes");
-    }
-
-    let pane_list = String::from_utf8(output.stdout)?;
-
-    let mut panes = Vec::new();
-
-    for line in pane_list.lines() {
-      if line.is_empty() {
-        continue;
-      }
-
-      let pane = self.parse_and_capture_pane(line, runner)?;
-
-      if self.excluded_pane_ids.contains(&pane.tmux_pane_id) {
-        continue;
-      }
-
-      panes.push(pane);
-    }
-
-    self.panes = panes;
+    self.panes = Self::list_panes(runner)?
+      .into_iter()
+      .filter(|entry| !excluded.contains(&entry.pane_id))
+      .map(|entry| self.capture_entry(&entry, runner))
+      .collect::<Result<Vec<_>>>()?;
 
     Ok(())
   }
@@ -63,6 +73,23 @@ impl Tmux {
     Self::select_pane_with_runner(&pane.tmux_pane_id, runner)
   }
 
+  fn list_panes(runner: &dyn CommandRunner) -> Result<Vec<ListEntry>> {
+    let output =
+      runner.run(&["list-panes", "-a", "-F", ListEntry::format()])?;
+
+    if !output.status.success() {
+      bail!("failed to list tmux panes");
+    }
+
+    let pane_list = String::from_utf8(output.stdout)?;
+
+    pane_list
+      .lines()
+      .filter(|line| !line.is_empty())
+      .map(|line| serde_json::from_str(line).map_err(Into::into))
+      .collect()
+  }
+
   pub(crate) fn list_spymux_instances() -> Result<Vec<Instance>> {
     Self::list_spymux_instances_with_runner(&TmuxCommandRunner)
   }
@@ -70,62 +97,27 @@ impl Tmux {
   fn list_spymux_instances_with_runner(
     runner: &dyn CommandRunner,
   ) -> Result<Vec<Instance>> {
-    const FORMAT: &str = concat!(
-      "#{session_name}:#{window_index}.#{pane_index}\t",
-      "#{pane_id}\t",
-      "#{pane_current_command}\t",
-      "#{pane_start_command}\t",
-      "#{pane_current_path}"
-    );
+    Ok(
+      Self::list_panes(runner)?
+        .into_iter()
+        .filter(|entry| entry.command.trim().eq_ignore_ascii_case("spymux"))
+        .map(|entry| {
+          let descriptor = entry.descriptor();
 
-    let output = runner.run(&["list-panes", "-a", "-F", FORMAT])?;
-
-    if !output.status.success() {
-      bail!("failed to list tmux panes");
-    }
-
-    let mut instances = Vec::new();
-
-    for line in String::from_utf8(output.stdout)?.lines() {
-      if line.is_empty() {
-        continue;
-      }
-
-      let mut parts = line.split('\t');
-
-      let Some(descriptor) = parts.next() else {
-        continue;
-      };
-
-      let Some(pane_id) = parts.next() else {
-        continue;
-      };
-
-      let current_command = parts.next().unwrap_or_default();
-      let start_command = parts.next().unwrap_or_default();
-
-      let path = parts.next().unwrap_or_default();
-
-      if !Self::pane_runs_spymux(current_command, start_command) {
-        continue;
-      }
-
-      let (session, window, pane_index) = Self::parse_descriptor(descriptor)?;
-
-      instances.push(Instance {
-        current_path: path.to_string(),
-        pane: Pane {
-          content: String::new(),
-          id: descriptor.to_string(),
-          pane_index,
-          session,
-          tmux_pane_id: pane_id.to_string(),
-          window,
-        },
-      });
-    }
-
-    Ok(instances)
+          Instance {
+            current_path: entry.path,
+            pane: Pane {
+              content: String::new(),
+              id: descriptor,
+              pane_index: entry.pane_index,
+              session: entry.session,
+              tmux_pane_id: entry.pane_id,
+              window: entry.window_index,
+            },
+          }
+        })
+        .collect(),
+    )
   }
 
   pub(crate) fn new(config: Config) -> Self {
@@ -134,85 +126,6 @@ impl Tmux {
       include_escape_codes: config.color_output,
       panes: Vec::new(),
     }
-  }
-
-  fn pane_runs_spymux(current: &str, start: &str) -> bool {
-    if current.trim().eq_ignore_ascii_case("spymux") {
-      return true;
-    }
-
-    start.trim().to_ascii_lowercase().contains("spymux")
-  }
-
-  fn parse_and_capture_pane(
-    &self,
-    line: &str,
-    runner: &dyn CommandRunner,
-  ) -> Result<Pane> {
-    let Some((descriptor, pane_id)) = line.split_once('\t') else {
-      bail!("invalid pane format: {line}");
-    };
-
-    let parts: Vec<&str> = descriptor.split(':').collect();
-
-    if parts.len() != 2 {
-      bail!("invalid pane format: {line}");
-    }
-
-    let session = parts[0].to_string();
-
-    let window_pane = parts[1].split('.').collect::<Vec<&str>>();
-
-    if window_pane.len() != 2 {
-      bail!("invalid window.pane format: {}", parts[1]);
-    }
-
-    let (window, pane_index) = (
-      window_pane[0].parse::<usize>()?,
-      window_pane[1].parse::<usize>()?,
-    );
-
-    let mut capture_cmd = vec!["capture-pane", "-t", descriptor, "-p"];
-
-    if self.include_escape_codes {
-      capture_cmd.push("-e");
-    }
-
-    let content_output = runner.run(&capture_cmd)?;
-
-    if !content_output.status.success() {
-      bail!("failed to capture pane output");
-    }
-
-    let content = String::from_utf8_lossy(&content_output.stdout).to_string();
-
-    Ok(Pane {
-      content,
-      id: descriptor.to_string(),
-      pane_index,
-      tmux_pane_id: pane_id.to_string(),
-      session,
-      window,
-    })
-  }
-
-  fn parse_descriptor(descriptor: &str) -> Result<(String, usize, usize)> {
-    let parts: Vec<&str> = descriptor.split(':').collect();
-
-    if parts.len() != 2 {
-      bail!("invalid pane format: {descriptor}");
-    }
-
-    let window_parts = parts[1].split('.').collect::<Vec<&str>>();
-
-    if window_parts.len() != 2 {
-      bail!("invalid window.pane format: {}", parts[1]);
-    }
-
-    let window = window_parts[0].parse::<usize>()?;
-    let pane_index = window_parts[1].parse::<usize>()?;
-
-    Ok((parts[0].to_string(), window, pane_index))
   }
 
   fn select_pane_with_runner(
@@ -246,6 +159,7 @@ impl Tmux {
 mod tests {
   use {
     super::*,
+    serde_json::json,
     std::{cell::RefCell, collections::BTreeMap, process::ExitStatus},
   };
 
@@ -337,6 +251,25 @@ mod tests {
     }
   }
 
+  fn pane_json(
+    session: &str,
+    window_index: usize,
+    pane_index: usize,
+    pane_id: &str,
+    current_command: &str,
+    path: &str,
+  ) -> String {
+    json!({
+      "command": current_command,
+      "pane_id": pane_id,
+      "pane_index": pane_index,
+      "path": path,
+      "session": session,
+      "window_index": window_index,
+    })
+    .to_string()
+  }
+
   #[cfg(unix)]
   fn exit_status(success: bool) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
@@ -391,7 +324,10 @@ mod tests {
 
     let runner = MockCommandRunner {
       capture_outputs,
-      list_panes_output: String::from("session1:0.0\t%0\n"),
+      list_panes_output: format!(
+        "{}\n",
+        pane_json("session1", 0, 0, "%0", "", "")
+      ),
       ..Default::default()
     };
 
@@ -424,8 +360,11 @@ mod tests {
 
     let runner = MockCommandRunner {
       capture_outputs,
-      list_panes_output: String::from(
-        "session1:0.0\t%0\nsession1:0.1\t%1\nsession2:1.0\t%2\n",
+      list_panes_output: format!(
+        "{}\n{}\n{}\n",
+        pane_json("session1", 0, 0, "%0", "", ""),
+        pane_json("session1", 0, 1, "%1", "", ""),
+        pane_json("session2", 1, 0, "%2", "", "")
       ),
       ..Default::default()
     };
@@ -474,7 +413,11 @@ mod tests {
 
     let runner = MockCommandRunner {
       capture_outputs,
-      list_panes_output: String::from("session1:0.0\t%0\nsession1:0.1\t%1\n"),
+      list_panes_output: format!(
+        "{}\n{}\n",
+        pane_json("session1", 0, 0, "%0", "", ""),
+        pane_json("session1", 0, 1, "%1", "", "")
+      ),
       ..Default::default()
     };
 
@@ -504,7 +447,10 @@ mod tests {
       .insert("mysession:5.3".to_string(), "Content\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "mysession:5.3\t%10\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        pane_json("mysession", 5, 3, "%10", "", "")
+      ),
       capture_outputs,
       ..Default::default()
     };
@@ -533,7 +479,10 @@ mod tests {
     capture_outputs.insert("session1:0.0".to_string(), "Content\n".to_string());
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\t%0\n\n\n".to_string(),
+      list_panes_output: format!(
+        "{}\n\n\n",
+        pane_json("session1", 0, 0, "%0", "", "")
+      ),
       capture_outputs,
       ..Default::default()
     };
@@ -565,7 +514,10 @@ mod tests {
     );
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\t%0\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        pane_json("session1", 0, 0, "%0", "", "")
+      ),
       capture_outputs,
       ..Default::default()
     };
@@ -696,52 +648,33 @@ mod tests {
   #[test]
   fn list_spymux_instances_with_runner_filters_entries() {
     let runner = MockCommandRunner {
-      list_panes_output: "\
-session1:0.0\t%0\tspymux\tspymux\t/home/project\n\
-session1:0.1\t%1\tbash\tcargo run -- spymux\t/home/other\n\
-session1:0.2\t%2\tbash\tbash\t/home/skip\n"
-        .to_string(),
+      list_panes_output: format!(
+        "{}\n{}\n{}\n",
+        pane_json("session1", 0, 0, "%0", "spymux", "/home/project"),
+        pane_json("session1", 0, 1, "%1", "bash", "/home/other"),
+        pane_json("session1", 0, 2, "%2", "bash", "/home/skip")
+      ),
       ..Default::default()
     };
 
     let instances = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
 
-    assert_eq!(instances.len(), 2);
+    assert_eq!(instances.len(), 1);
 
     assert_eq!(
       instances,
-      vec![
-        Instance {
-          current_path: "/home/project".to_string(),
-          pane: Pane {
-            content: String::new(),
-            id: "session1:0.0".to_string(),
-            pane_index: 0,
-            tmux_pane_id: "%0".to_string(),
-            session: "session1".to_string(),
-            window: 0,
-          },
+      vec![Instance {
+        current_path: "/home/project".to_string(),
+        pane: Pane {
+          content: String::new(),
+          id: "session1:0.0".to_string(),
+          pane_index: 0,
+          tmux_pane_id: "%0".to_string(),
+          session: "session1".to_string(),
+          window: 0,
         },
-        Instance {
-          current_path: "/home/other".to_string(),
-          pane: Pane {
-            content: String::new(),
-            id: "session1:0.1".to_string(),
-            pane_index: 1,
-            tmux_pane_id: "%1".to_string(),
-            session: "session1".to_string(),
-            window: 0,
-          },
-        },
-      ]
+      },]
     );
-  }
-
-  #[test]
-  fn pane_runs_spymux_detects_commands() {
-    assert!(Tmux::pane_runs_spymux("spymux", "bash"));
-    assert!(Tmux::pane_runs_spymux("bash", "cargo run spymux"));
-    assert!(!Tmux::pane_runs_spymux("bash", "bash start"));
   }
 
   #[test]
@@ -762,7 +695,7 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
   #[test]
   fn invalid_pane_format_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "not_a_valid_pane\n".to_string(),
+      list_panes_output: "not_a_valid_json\n".to_string(),
       ..Default::default()
     };
 
@@ -770,14 +703,23 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid pane format: not_a_valid_pane"
+      "expected ident at line 1 column 2"
     );
   }
 
   #[test]
   fn invalid_window_pane_format_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "session1-0-0\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        json!({
+          "command": "",
+          "pane_id": "%0",
+          "path": "",
+          "session": "session1",
+          "window_index": 0,
+        })
+      ),
       ..Default::default()
     };
 
@@ -785,14 +727,24 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid pane format: session1-0-0"
+      "missing field `pane_index` at line 1 column 77"
     );
   }
 
   #[test]
   fn invalid_window_index_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "session1:not_a_number.0\t%0\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        json!({
+          "command": "",
+          "pane_id": "%0",
+          "pane_index": 0,
+          "path": "",
+          "session": "session1",
+          "window_index": "not_a_number",
+        })
+      ),
       ..Default::default()
     };
 
@@ -800,14 +752,24 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid digit found in string"
+      "invalid type: string \"not_a_number\", expected usize at line 1 column 104"
     );
   }
 
   #[test]
   fn invalid_pane_index_returns_error() {
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.not_a_number\t%0\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        json!({
+          "command": "",
+          "pane_id": "%0",
+          "pane_index": "not_a_number",
+          "path": "",
+          "session": "session1",
+          "window_index": 0,
+        })
+      ),
       ..Default::default()
     };
 
@@ -815,7 +777,7 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
-      "invalid digit found in string"
+      "invalid type: string \"not_a_number\", expected usize at line 1 column 56"
     );
   }
 
@@ -826,7 +788,10 @@ session1:0.2\t%2\tbash\tbash\t/home/skip\n"
     capture_successes.insert("session1:0.0".to_string(), false);
 
     let runner = MockCommandRunner {
-      list_panes_output: "session1:0.0\t%0\n".to_string(),
+      list_panes_output: format!(
+        "{}\n",
+        pane_json("session1", 0, 0, "%0", "", "")
+      ),
       capture_successes,
       ..Default::default()
     };
