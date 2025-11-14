@@ -677,8 +677,18 @@ mod tests {
     let panes =
       Tmux::list_panes_by_command_with_runner("SPYMUx", &runner).unwrap();
 
-    assert_eq!(panes.len(), 1);
-    assert_eq!(panes[0].id, "%0");
+    assert_eq!(
+      panes,
+      vec![Pane {
+        command: "SpYmUx".to_string(),
+        content: String::new(),
+        id: "%0".to_string(),
+        index: 0,
+        path: "/home/project".to_string(),
+        session: "session1".to_string(),
+        window_index: 0,
+      }]
+    );
   }
 
   #[test]
