@@ -209,10 +209,10 @@ impl App {
         KeyCode::Char('q') | KeyCode::Esc => {
           return Ok(Some(Action::Quit));
         }
-        KeyCode::Char('h') => {
+        KeyCode::Char('x') => {
           self.hide_selected_pane();
         }
-        KeyCode::Left => {
+        KeyCode::Char('h') | KeyCode::Left => {
           self.move_selection(Movement::Left)?;
         }
         KeyCode::Char('j') | KeyCode::Down => {
