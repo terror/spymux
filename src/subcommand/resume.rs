@@ -1,28 +1,24 @@
 use super::*;
 
 pub(crate) fn run() -> Result {
-  let current_dir =
-    env::current_dir().context("failed to determine current directory")?;
+  let current_pane_id = env::var("TMUX_PANE").ok();
 
-  let current_dir = fs::canonicalize(&current_dir).unwrap_or(current_dir);
+  let mut panes = Tmux::list_spymux_instances()?;
 
-  let panes = Tmux::list_spymux_instances()?;
+  if let Some(current_pane_id) = current_pane_id {
+    panes.retain(|pane| pane.id != current_pane_id);
+  }
 
-  let candidates = panes
-    .into_iter()
-    .filter(|pane| !is_current_directory(&current_dir, pane.path.as_str()))
-    .collect::<Vec<_>>();
-
-  if candidates.is_empty() {
+  if panes.is_empty() {
     bail!("no running spymux panes were found");
   }
 
-  if candidates.len() == 1 {
-    Tmux::focus_pane(&candidates[0])?;
+  if panes.len() == 1 {
+    Tmux::focus_pane(&panes[0])?;
     return Ok(());
   }
 
-  if let Some(pane) = select_pane(&candidates)? {
+  if let Some(pane) = select_pane(&panes)? {
     Tmux::focus_pane(&pane)?;
   }
 
@@ -41,9 +37,13 @@ fn select_pane(panes: &[Pane]) -> Result<Option<Pane>> {
       child.stdin.take().context("failed to open stdin for fzf")?;
 
     for pane in panes {
-      let path = sanitize_path(&pane.path);
-
-      writeln!(&mut stdin, "{}\t{}\t{}", pane.descriptor(), path, pane.id)?;
+      writeln!(
+        &mut stdin,
+        "{}\t{}\t{}",
+        pane.descriptor(),
+        sanitize_path(&pane.path),
+        pane.id
+      )?;
     }
   }
 
@@ -59,7 +59,7 @@ fn select_pane(panes: &[Pane]) -> Result<Option<Pane>> {
     .lines()
     .next()
     .map(str::trim)
-    .filter(|s| !s.is_empty())
+    .filter(|line| !line.is_empty())
   else {
     return Ok(None);
   };
@@ -84,26 +84,9 @@ fn sanitize_path(path: &str) -> String {
   path.replace('\t', " ")
 }
 
-fn is_current_directory(current_dir: &Path, candidate: &str) -> bool {
-  if candidate.is_empty() {
-    return false;
-  }
-
-  let candidate_path = Path::new(candidate);
-
-  if let Ok(canonical_candidate) = fs::canonicalize(candidate_path) {
-    return canonical_candidate == current_dir;
-  }
-
-  candidate_path == current_dir
-}
-
 #[cfg(test)]
 mod tests {
-  use {
-    super::*,
-    std::{env, fs},
-  };
+  use super::*;
 
   #[test]
   fn sanitize_path_replaces_tabs() {
@@ -113,22 +96,5 @@ mod tests {
   #[test]
   fn sanitize_path_handles_empty() {
     assert_eq!(sanitize_path(""), "-");
-  }
-
-  #[test]
-  fn current_directory_comparison_skips_empty() {
-    assert!(!is_current_directory(&env::temp_dir(), ""));
-  }
-
-  #[test]
-  fn current_directory_comparison_matches() {
-    let cwd = env::temp_dir();
-
-    let canonical_cwd = fs::canonicalize(&cwd).unwrap_or(cwd.clone());
-
-    assert!(is_current_directory(
-      &canonical_cwd,
-      &canonical_cwd.to_string_lossy()
-    ));
   }
 }

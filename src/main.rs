@@ -32,9 +32,8 @@ use {
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
-    env, fs,
+    env,
     io::{self, IsTerminal, Stdout, Write},
-    path::Path,
     process::{self, Command, Output, Stdio},
     time::{Duration, Instant},
   },
