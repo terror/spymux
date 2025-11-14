@@ -72,7 +72,7 @@ A centralized view for all of your tmux panes
 Usage: spymux [OPTIONS] [COMMAND]
 
 Commands:
-  resume
+  resume  Resume a spymux session in another directory
   help    Print this message or the help of the given subcommand(s)
 
 Options:
