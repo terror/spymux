@@ -580,7 +580,7 @@ impl App {
         );
 
         let mut block = Block::default()
-          .title(pane.descriptor())
+          .title(pane.title())
           .borders(Borders::ALL)
           .border_type(BorderType::Rounded);
 
