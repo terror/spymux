@@ -318,10 +318,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Hello World\n".to_string(),
+        id: "%0".to_string(),
         index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -356,28 +356,28 @@ mod tests {
         Pane {
           command: String::new(),
           content: "Pane 1\n".to_string(),
+          id: "%0".to_string(),
           index: 0,
           path: String::new(),
           session: "session1".to_string(),
-          id: "%0".to_string(),
           window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "Pane 2\n".to_string(),
+          id: "%1".to_string(),
           index: 1,
           path: String::new(),
           session: "session1".to_string(),
-          id: "%1".to_string(),
           window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "Pane 3\n".to_string(),
+          id: "%2".to_string(),
           index: 0,
           path: String::new(),
           session: "session2".to_string(),
-          id: "%2".to_string(),
           window_index: 1,
         },
       ]
@@ -411,10 +411,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Pane 1\n".to_string(),
+        id: "%0".to_string(),
         index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -445,10 +445,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Content\n".to_string(),
+        id: "%10".to_string(),
         index: 3,
         path: String::new(),
         session: "mysession".to_string(),
-        id: "%10".to_string(),
         window_index: 5,
       }]
     );
@@ -478,10 +478,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Content\n".to_string(),
+        id: "%0".to_string(),
         index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -511,10 +511,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "Line 1\nLine 2\nLine 3\n".to_string(),
+        id: "%0".to_string(),
         index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -527,19 +527,19 @@ mod tests {
         Pane {
           command: String::new(),
           content: "one".to_string(),
+          id: "%0".to_string(),
           index: 0,
           path: String::new(),
           session: "session1".to_string(),
-          id: "%0".to_string(),
           window_index: 0,
         },
         Pane {
           command: String::new(),
           content: "two".to_string(),
+          id: "%1".to_string(),
           index: 1,
           path: String::new(),
           session: "session1".to_string(),
-          id: "%1".to_string(),
           window_index: 0,
         },
       ],
@@ -553,10 +553,10 @@ mod tests {
       vec![Pane {
         command: String::new(),
         content: "one".to_string(),
+        id: "%0".to_string(),
         index: 0,
         path: String::new(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -593,10 +593,10 @@ mod tests {
     let pane = Pane {
       command: String::new(),
       content: String::new(),
+      id: "%12".to_string(),
       index: 2,
       path: String::new(),
       session: "mysession".to_string(),
-      id: "%12".to_string(),
       window_index: 3,
     };
 
@@ -616,10 +616,10 @@ mod tests {
     let pane = Pane {
       command: String::new(),
       content: String::new(),
+      id: "%3".to_string(),
       index: 0,
       path: String::new(),
       session: "mysession".to_string(),
-      id: "%3".to_string(),
       window_index: 1,
     };
 
@@ -652,10 +652,10 @@ mod tests {
       vec![Pane {
         command: "spymux".to_string(),
         content: String::new(),
+        id: "%0".to_string(),
         index: 0,
         path: "/home/project".to_string(),
         session: "session1".to_string(),
-        id: "%0".to_string(),
         window_index: 0,
       }]
     );
@@ -722,8 +722,8 @@ mod tests {
         "{}\n",
         json!({
           "command": "",
-          "pane_id": "%0",
           "index": 0,
+          "pane_id": "%0",
           "path": "",
           "session": "session1",
           "window_index": "not_a_number",
@@ -747,8 +747,8 @@ mod tests {
         "{}\n",
         json!({
           "command": "",
-          "pane_id": "%0",
           "index": "not_a_number",
+          "pane_id": "%0",
           "path": "",
           "session": "session1",
           "window_index": 0,
@@ -794,8 +794,8 @@ mod tests {
         match args[0] {
           "list-panes" => Ok(Output {
             status: exit_status(true),
-            stdout: vec![0xf0, 0x28, 0x8c, 0x28],
             stderr: vec![],
+            stdout: vec![0xf0, 0x28, 0x8c, 0x28],
           }),
           _ => bail!("unexpected command"),
         }

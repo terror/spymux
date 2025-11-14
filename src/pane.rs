@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(crate) struct Pane {

@@ -26,6 +26,7 @@ use {
     widgets::{Block, Borders, Paragraph, Wrap},
   },
   row_cursor::RowCursor,
+  serde::Deserialize,
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
