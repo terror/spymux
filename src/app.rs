@@ -5,7 +5,7 @@ pub(crate) struct App {
   config: Config,
   last_refresh: Instant,
   pane_regions: Vec<Rect>,
-  selected_pane_id: Option<String>,
+  selected_pane: Option<Pane>,
   terminal: TerminalGuard,
   tmux: Tmux,
 }
@@ -183,23 +183,23 @@ impl App {
   }
 
   fn ensure_selection(&mut self) {
-    if self.tmux.panes.is_empty() {
-      self.selected_pane_id = None;
-      return;
-    }
-
-    if self.selected_pane().is_some() {
-      return;
-    }
-
-    if let Some(pane) = self.tmux.panes.first() {
-      self.selected_pane_id = Some(pane.id.clone());
+    self.selected_pane = if self.tmux.panes.is_empty() {
+      None
+    } else {
+      self
+        .selected_pane
+        .as_ref()
+        .and_then(|current| {
+          self.tmux.panes.iter().find(|pane| pane.id == current.id)
+        })
+        .cloned()
+        .or_else(|| self.tmux.panes.first().cloned())
     }
   }
 
   fn focus_pane(&mut self, pane: &Pane) -> Result {
     Tmux::focus_pane(pane)?;
-    self.selected_pane_id = Some(pane.id.clone());
+    self.selected_pane = Some(pane.clone());
     Ok(())
   }
 
@@ -282,7 +282,7 @@ impl App {
       return Ok(());
     }
 
-    let Some(selected_id) = self.selected_pane_id.as_deref() else {
+    let Some(selected) = self.selected_pane.as_ref() else {
       return Ok(());
     };
 
@@ -290,7 +290,7 @@ impl App {
       .tmux
       .panes
       .iter()
-      .position(|pane| pane.id == selected_id)
+      .position(|pane| pane.id == selected.id)
     else {
       return Ok(());
     };
@@ -317,12 +317,12 @@ impl App {
 
     tmux.capture()?;
 
-    let selected_pane_id = tmux.panes.first().map(|pane| pane.id.clone());
+    let selected_pane = tmux.panes.first().cloned();
 
     Ok(Self {
       config,
       pane_regions: Vec::new(),
-      selected_pane_id,
+      selected_pane,
       terminal,
       tmux,
       last_refresh: Instant::now(),
@@ -458,19 +458,12 @@ impl App {
 
   fn select_pane_at_index(&mut self, pane_index: usize) {
     if let Some(pane) = self.tmux.panes.get(pane_index) {
-      self.selected_pane_id = Some(pane.id.clone());
+      self.selected_pane = Some(pane.clone());
     }
   }
 
   fn selected_pane(&self) -> Option<Pane> {
-    let selected_id = self.selected_pane_id.as_deref()?;
-
-    self
-      .tmux
-      .panes
-      .iter()
-      .find(|pane| pane.id == selected_id)
-      .cloned()
+    self.selected_pane.clone()
   }
 
   fn slice_text_from(text: &Text<'static>, cursor: RowCursor) -> Text<'static> {
@@ -575,11 +568,12 @@ impl App {
           .title(pane.descriptor())
           .borders(Borders::ALL);
 
-        if self
-          .selected_pane_id
-          .as_deref()
-          .is_some_and(|id| id == pane.id)
-        {
+        let is_selected = self
+          .selected_pane
+          .as_ref()
+          .is_some_and(|selected| selected.id == pane.id);
+
+        if is_selected {
           block = block
             .border_type(BorderType::Thick)
             .border_style(Style::default().fg(Color::Cyan));
