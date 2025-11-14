@@ -3,7 +3,7 @@ use super::*;
 pub(crate) fn run() -> Result {
   let current_pane_id = env::var("TMUX_PANE").ok();
 
-  let mut panes = Tmux::list_spymux_instances()?;
+  let mut panes = Tmux::list_panes_by_command(env!("CARGO_PKG_NAME"))?;
 
   if let Some(current_pane_id) = current_pane_id {
     panes.retain(|pane| pane.id != current_pane_id);
