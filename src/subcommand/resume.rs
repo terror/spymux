@@ -6,13 +6,11 @@ pub(crate) fn run() -> Result {
 
   let current_dir = fs::canonicalize(&current_dir).unwrap_or(current_dir);
 
-  let instances = Tmux::list_spymux_instances()?;
+  let panes = Tmux::list_spymux_instances()?;
 
-  let candidates = instances
+  let candidates = panes
     .into_iter()
-    .filter(|instance| {
-      !is_current_directory(&current_dir, instance.current_path.as_str())
-    })
+    .filter(|pane| !is_current_directory(&current_dir, pane.path.as_str()))
     .collect::<Vec<_>>();
 
   if candidates.is_empty() {
@@ -20,18 +18,18 @@ pub(crate) fn run() -> Result {
   }
 
   if candidates.len() == 1 {
-    Tmux::focus_pane(&candidates[0].pane)?;
+    Tmux::focus_pane(&candidates[0])?;
     return Ok(());
   }
 
-  if let Some(instance) = select_instance(&candidates)? {
-    Tmux::focus_pane(&instance.pane)?;
+  if let Some(pane) = select_pane(&candidates)? {
+    Tmux::focus_pane(&pane)?;
   }
 
   Ok(())
 }
 
-fn select_instance(instances: &[Instance]) -> Result<Option<Instance>> {
+fn select_pane(panes: &[Pane]) -> Result<Option<Pane>> {
   let mut child = Command::new("fzf")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -42,13 +40,15 @@ fn select_instance(instances: &[Instance]) -> Result<Option<Instance>> {
     let mut stdin =
       child.stdin.take().context("failed to open stdin for fzf")?;
 
-    for instance in instances {
-      let path = sanitize_path(&instance.current_path);
+    for pane in panes {
+      let path = sanitize_path(&pane.path);
 
       writeln!(
         &mut stdin,
         "{}\t{}\t{}",
-        instance.pane.id, path, instance.pane.tmux_pane_id
+        pane.descriptor(),
+        path,
+        pane.tmux_pane_id
       )?;
     }
   }
@@ -74,12 +74,12 @@ fn select_instance(instances: &[Instance]) -> Result<Option<Instance>> {
     bail!("failed to parse selection from fzf");
   };
 
-  let instance = instances
+  let pane = panes
     .iter()
-    .find(|instance| instance.pane.tmux_pane_id == pane_id)
+    .find(|pane| pane.tmux_pane_id == pane_id)
     .ok_or_else(|| anyhow!("unable to locate pane {pane_id}"))?;
 
-  Ok(Some(instance.clone()))
+  Ok(Some(pane.clone()))
 }
 
 fn sanitize_path(path: &str) -> String {

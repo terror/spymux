@@ -14,10 +14,10 @@ impl Tmux {
 
   fn capture_entry(
     &self,
-    entry: &ListEntry,
+    mut pane: Pane,
     runner: &dyn CommandRunner,
   ) -> Result<Pane> {
-    let descriptor = entry.descriptor();
+    let descriptor = pane.descriptor();
 
     let mut capture_cmd = vec!["capture-pane", "-t", descriptor.as_str(), "-p"];
 
@@ -33,14 +33,9 @@ impl Tmux {
 
     let content = String::from_utf8_lossy(&content_output.stdout).to_string();
 
-    Ok(Pane {
-      content,
-      id: descriptor,
-      pane_index: entry.pane_index,
-      tmux_pane_id: entry.pane_id.clone(),
-      session: entry.session.clone(),
-      window: entry.window_index,
-    })
+    pane.content = content;
+
+    Ok(pane)
   }
 
   fn capture_with_runner(&mut self, runner: &dyn CommandRunner) -> Result {
@@ -48,8 +43,8 @@ impl Tmux {
 
     self.panes = Self::list_panes(runner)?
       .into_iter()
-      .filter(|entry| !excluded.contains(&entry.pane_id))
-      .map(|entry| self.capture_entry(&entry, runner))
+      .filter(|pane| !excluded.contains(&pane.tmux_pane_id))
+      .map(|pane| self.capture_entry(pane, runner))
       .collect::<Result<Vec<_>>>()?;
 
     Ok(())
@@ -73,9 +68,8 @@ impl Tmux {
     Self::select_pane_with_runner(&pane.tmux_pane_id, runner)
   }
 
-  fn list_panes(runner: &dyn CommandRunner) -> Result<Vec<ListEntry>> {
-    let output =
-      runner.run(&["list-panes", "-a", "-F", ListEntry::format()])?;
+  fn list_panes(runner: &dyn CommandRunner) -> Result<Vec<Pane>> {
+    let output = runner.run(&["list-panes", "-a", "-F", Pane::format()])?;
 
     if !output.status.success() {
       bail!("failed to list tmux panes");
@@ -90,32 +84,17 @@ impl Tmux {
       .collect()
   }
 
-  pub(crate) fn list_spymux_instances() -> Result<Vec<Instance>> {
+  pub(crate) fn list_spymux_instances() -> Result<Vec<Pane>> {
     Self::list_spymux_instances_with_runner(&TmuxCommandRunner)
   }
 
   fn list_spymux_instances_with_runner(
     runner: &dyn CommandRunner,
-  ) -> Result<Vec<Instance>> {
+  ) -> Result<Vec<Pane>> {
     Ok(
       Self::list_panes(runner)?
         .into_iter()
-        .filter(|entry| entry.command.trim().eq_ignore_ascii_case("spymux"))
-        .map(|entry| {
-          let descriptor = entry.descriptor();
-
-          Instance {
-            current_path: entry.path,
-            pane: Pane {
-              content: String::new(),
-              id: descriptor,
-              pane_index: entry.pane_index,
-              session: entry.session,
-              tmux_pane_id: entry.pane_id,
-              window: entry.window_index,
-            },
-          }
-        })
+        .filter(|pane| pane.command.trim().eq_ignore_ascii_case("spymux"))
         .collect(),
     )
   }
@@ -340,11 +319,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "Hello World\n".to_string(),
-        id: "session1:0.0".to_string(),
         pane_index: 0,
-        tmux_pane_id: "%0".to_string(),
+        path: String::new(),
         session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
         window: 0,
       }]
     );
@@ -377,27 +357,30 @@ mod tests {
       tmux.panes,
       vec![
         Pane {
+          command: String::new(),
           content: "Pane 1\n".to_string(),
-          id: "session1:0.0".to_string(),
           pane_index: 0,
+          path: String::new(),
+          session: "session1".to_string(),
           tmux_pane_id: "%0".to_string(),
-          session: "session1".to_string(),
           window: 0,
         },
         Pane {
+          command: String::new(),
           content: "Pane 2\n".to_string(),
-          id: "session1:0.1".to_string(),
           pane_index: 1,
-          tmux_pane_id: "%1".to_string(),
+          path: String::new(),
           session: "session1".to_string(),
+          tmux_pane_id: "%1".to_string(),
           window: 0,
         },
         Pane {
+          command: String::new(),
           content: "Pane 3\n".to_string(),
-          id: "session2:1.0".to_string(),
           pane_index: 0,
-          tmux_pane_id: "%2".to_string(),
+          path: String::new(),
           session: "session2".to_string(),
+          tmux_pane_id: "%2".to_string(),
           window: 1,
         },
       ]
@@ -429,11 +412,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "Pane 1\n".to_string(),
-        id: "session1:0.0".to_string(),
         pane_index: 0,
-        tmux_pane_id: "%0".to_string(),
+        path: String::new(),
         session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
         window: 0,
       }]
     );
@@ -462,11 +446,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "Content\n".to_string(),
-        id: "mysession:5.3".to_string(),
         pane_index: 3,
-        tmux_pane_id: "%10".to_string(),
+        path: String::new(),
         session: "mysession".to_string(),
+        tmux_pane_id: "%10".to_string(),
         window: 5,
       }]
     );
@@ -494,11 +479,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "Content\n".to_string(),
-        id: "session1:0.0".to_string(),
         pane_index: 0,
-        tmux_pane_id: "%0".to_string(),
+        path: String::new(),
         session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
         window: 0,
       }]
     );
@@ -529,11 +515,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "Line 1\nLine 2\nLine 3\n".to_string(),
-        id: "session1:0.0".to_string(),
         pane_index: 0,
-        tmux_pane_id: "%0".to_string(),
+        path: String::new(),
         session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
         window: 0,
       }]
     );
@@ -544,19 +531,21 @@ mod tests {
     let mut tmux = Tmux {
       panes: vec![
         Pane {
+          command: String::new(),
           content: "one".to_string(),
-          id: "session1:0.0".to_string(),
           pane_index: 0,
-          tmux_pane_id: "%0".to_string(),
+          path: String::new(),
           session: "session1".to_string(),
+          tmux_pane_id: "%0".to_string(),
           window: 0,
         },
         Pane {
+          command: String::new(),
           content: "two".to_string(),
-          id: "session1:0.1".to_string(),
           pane_index: 1,
-          tmux_pane_id: "%1".to_string(),
+          path: String::new(),
           session: "session1".to_string(),
+          tmux_pane_id: "%1".to_string(),
           window: 0,
         },
       ],
@@ -568,11 +557,12 @@ mod tests {
     assert_eq!(
       tmux.panes,
       vec![Pane {
+        command: String::new(),
         content: "one".to_string(),
-        id: "session1:0.0".to_string(),
         pane_index: 0,
-        tmux_pane_id: "%0".to_string(),
+        path: String::new(),
         session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
         window: 0,
       }]
     );
@@ -607,11 +597,12 @@ mod tests {
     let runner = MockCommandRunner::default();
 
     let pane = Pane {
+      command: String::new(),
       content: String::new(),
-      id: "mysession:3.2".to_string(),
       pane_index: 2,
-      tmux_pane_id: "%12".to_string(),
+      path: String::new(),
       session: "mysession".to_string(),
+      tmux_pane_id: "%12".to_string(),
       window: 3,
     };
 
@@ -629,11 +620,12 @@ mod tests {
     };
 
     let pane = Pane {
+      command: String::new(),
       content: String::new(),
-      id: "mysession:1.0".to_string(),
       pane_index: 0,
-      tmux_pane_id: "%3".to_string(),
+      path: String::new(),
       session: "mysession".to_string(),
+      tmux_pane_id: "%3".to_string(),
       window: 1,
     };
 
@@ -657,23 +649,21 @@ mod tests {
       ..Default::default()
     };
 
-    let instances = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
+    let panes = Tmux::list_spymux_instances_with_runner(&runner).unwrap();
 
-    assert_eq!(instances.len(), 1);
+    assert_eq!(panes.len(), 1);
 
     assert_eq!(
-      instances,
-      vec![Instance {
-        current_path: "/home/project".to_string(),
-        pane: Pane {
-          content: String::new(),
-          id: "session1:0.0".to_string(),
-          pane_index: 0,
-          tmux_pane_id: "%0".to_string(),
-          session: "session1".to_string(),
-          window: 0,
-        },
-      },]
+      panes,
+      vec![Pane {
+        command: "spymux".to_string(),
+        content: String::new(),
+        pane_index: 0,
+        path: "/home/project".to_string(),
+        session: "session1".to_string(),
+        tmux_pane_id: "%0".to_string(),
+        window: 0,
+      }]
     );
   }
 

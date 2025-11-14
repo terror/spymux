@@ -323,7 +323,7 @@ impl App {
             .wrap(Wrap { trim: false })
             .block(
               Block::default()
-                .title(pane.id.clone())
+                .title(pane.descriptor())
                 .borders(Borders::ALL),
             );
 
