@@ -1,13 +1,33 @@
-use {super::*, crate::tmux::SpymuxInstance, std::io::Write};
+use {
+  super::*,
+  crate::tmux::SpymuxInstance,
+  std::{env, fs, io::Write, path::Path},
+};
 
 pub(crate) fn run() -> Result {
+  let current_dir =
+    env::current_dir().context("failed to determine current directory")?;
+  let current_dir = fs::canonicalize(&current_dir).unwrap_or(current_dir);
+
   let instances = Tmux::list_spymux_instances()?;
 
-  if instances.is_empty() {
+  let candidates: Vec<_> = instances
+    .into_iter()
+    .filter(|instance| {
+      !is_current_directory(&current_dir, instance.current_path.as_str())
+    })
+    .collect();
+
+  if candidates.is_empty() {
     bail!("no running spymux panes were found");
   }
 
-  if let Some(instance) = select_instance(&instances)? {
+  if candidates.len() == 1 {
+    Tmux::focus_pane(&candidates[0].pane)?;
+    return Ok(());
+  }
+
+  if let Some(instance) = select_instance(&candidates)? {
     Tmux::focus_pane(&instance.pane)?;
   }
 
@@ -73,9 +93,26 @@ fn sanitize_path(path: &str) -> String {
   path.replace('\t', " ")
 }
 
+fn is_current_directory(current_dir: &Path, candidate: &str) -> bool {
+  if candidate.is_empty() {
+    return false;
+  }
+
+  let candidate_path = Path::new(candidate);
+
+  if let Ok(canonical_candidate) = fs::canonicalize(candidate_path) {
+    return canonical_candidate == current_dir;
+  }
+
+  candidate_path == current_dir
+}
+
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use {
+    super::*,
+    std::{env, fs},
+  };
 
   #[test]
   fn sanitize_path_replaces_tabs() {
@@ -85,5 +122,21 @@ mod tests {
   #[test]
   fn sanitize_path_handles_empty() {
     assert_eq!(sanitize_path(""), "-");
+  }
+
+  #[test]
+  fn current_directory_comparison_skips_empty() {
+    let cwd = env::temp_dir();
+
+    assert!(!is_current_directory(&cwd, ""));
+  }
+
+  #[test]
+  fn current_directory_comparison_matches() {
+    let cwd = env::temp_dir();
+    let canonical_cwd = fs::canonicalize(&cwd).unwrap_or(cwd);
+    let cwd_str = canonical_cwd.to_string_lossy().into_owned();
+
+    assert!(is_current_directory(&canonical_cwd, &cwd_str));
   }
 }
