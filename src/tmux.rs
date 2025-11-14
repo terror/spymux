@@ -677,6 +677,8 @@ mod tests {
     let panes =
       Tmux::list_panes_by_command_with_runner("SPYMUx", &runner).unwrap();
 
+    assert_eq!(panes.len(), 1);
+
     assert_eq!(
       panes,
       vec![Pane {
