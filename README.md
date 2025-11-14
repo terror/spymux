@@ -58,6 +58,20 @@ spymux
 We support a few configuration options, as seen below:
 
 ```present cargo run -- --help
+spymux 0.1.0
+
+A centralized view for all of your tmux panes
+
+Usage: spymux [OPTIONS] [COMMAND]
+
+Commands:
+  resume  Resume a running spymux instance via fzf
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -n, --no-colors  Disable colored output
+  -h, --help       Print help
+  -V, --version    Print version
 ```
 
 ## Prior Art
