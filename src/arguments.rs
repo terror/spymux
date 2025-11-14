@@ -1,6 +1,6 @@
-use {super::*, clap::Subcommand};
+use super::*;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[clap(
   about,
   author,
@@ -16,26 +16,20 @@ use {super::*, clap::Subcommand};
 "
 )]
 pub(crate) struct Arguments {
-  #[command(subcommand)]
-  command: Option<Command>,
-  #[arg(short, long, help = "Disable colored output")]
-  no_colors: bool,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum Command {
-  #[command(about = "Resume a running spymux instance via fzf")]
-  Resume,
+  #[clap(flatten)]
+  options: Options,
+  #[clap(subcommand)]
+  subcommand: Option<Subcommand>,
 }
 
 impl Arguments {
   pub(crate) fn color_output(&self) -> bool {
-    !self.no_colors
+    !self.options.no_colors
   }
 
-  pub(crate) fn run(&self) -> Result {
-    match self.command {
-      Some(Command::Resume) => resume::run(),
+  pub(crate) fn run(self) -> Result {
+    match self.subcommand {
+      Some(subcommand) => subcommand.run(),
       None => App::new(Config {
         color_output: self.color_output(),
       })?

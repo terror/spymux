@@ -15,6 +15,7 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  options::Options,
   pane::Pane,
   ratatui::{
     Terminal,
@@ -28,13 +29,15 @@ use {
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
-    env,
-    io::{self, IsTerminal, Stdout},
+    env, fs,
+    io::{self, IsTerminal, Stdout, Write},
+    path::Path,
     process::{self, Command, Output, Stdio},
     time::{Duration, Instant},
   },
+  subcommand::Subcommand,
   terminal_guard::TerminalGuard,
-  tmux::Tmux,
+  tmux::{SpymuxInstance, Tmux},
   unicode_width::UnicodeWidthChar,
 };
 
@@ -44,16 +47,17 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod options;
 mod pane;
-mod resume;
 mod row_cursor;
+mod subcommand;
 mod terminal_guard;
 mod tmux;
 
 fn main() {
   let arguments = Arguments::parse();
 
-  if let Err(error) = arguments.run() {
+  if let Err(error) = arguments.clone().run() {
     let use_color = io::stderr().is_terminal() && arguments.color_output();
 
     if use_color {

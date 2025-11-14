@@ -1,12 +1,9 @@
-use {
-  super::*,
-  crate::tmux::SpymuxInstance,
-  std::{env, fs, io::Write, path::Path},
-};
+use super::*;
 
 pub(crate) fn run() -> Result {
   let current_dir =
     env::current_dir().context("failed to determine current directory")?;
+
   let current_dir = fs::canonicalize(&current_dir).unwrap_or(current_dir);
 
   let instances = Tmux::list_spymux_instances()?;
@@ -49,6 +46,7 @@ fn select_instance(
 
     for instance in instances {
       let path = sanitize_path(&instance.current_path);
+
       writeln!(
         &mut stdin,
         "{}\t{}\t{}",
@@ -64,6 +62,7 @@ fn select_instance(
   }
 
   let selection = String::from_utf8(output.stdout)?;
+
   let Some(line) = selection
     .lines()
     .next()
@@ -126,17 +125,18 @@ mod tests {
 
   #[test]
   fn current_directory_comparison_skips_empty() {
-    let cwd = env::temp_dir();
-
-    assert!(!is_current_directory(&cwd, ""));
+    assert!(!is_current_directory(&env::temp_dir(), ""));
   }
 
   #[test]
   fn current_directory_comparison_matches() {
     let cwd = env::temp_dir();
-    let canonical_cwd = fs::canonicalize(&cwd).unwrap_or(cwd);
-    let cwd_str = canonical_cwd.to_string_lossy().into_owned();
 
-    assert!(is_current_directory(&canonical_cwd, &cwd_str));
+    let canonical_cwd = fs::canonicalize(&cwd).unwrap_or(cwd.clone());
+
+    assert!(is_current_directory(
+      &canonical_cwd,
+      &canonical_cwd.to_string_lossy()
+    ));
   }
 }
