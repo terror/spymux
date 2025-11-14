@@ -317,15 +317,13 @@ impl App {
 
     tmux.capture()?;
 
-    let selected_pane = tmux.panes.first().cloned();
-
     Ok(Self {
       config,
+      last_refresh: Instant::now(),
       pane_regions: Vec::new(),
-      selected_pane,
+      selected_pane: tmux.panes.first().cloned(),
       terminal,
       tmux,
-      last_refresh: Instant::now(),
     })
   }
 
