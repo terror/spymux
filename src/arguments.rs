@@ -1,6 +1,20 @@
 use {super::*, clap::Subcommand};
 
 #[derive(Debug, Parser)]
+#[clap(
+  about,
+  author,
+  version,
+  help_template = "\
+{before-help}{name} {version}
+
+{about}
+
+\x1b[1;4mUsage\x1b[0m: {usage}
+
+{all-args}{after-help}
+"
+)]
 pub(crate) struct Arguments {
   #[command(subcommand)]
   command: Option<Command>,

@@ -62,5 +62,5 @@ We support a few configuration options, as seen below:
 
 ## Prior Art
 
-There are a few parallel agent tools this project is loosely inspired by,
-however
+This project is loosely inspired by tools like [Claude Squad](https://github.com/smtg-ai/claude-squad). I want less of the management aspect, and more of a simple view into how things are going
+across the various agent instances I have open at any given time.

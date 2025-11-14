@@ -63,6 +63,10 @@ publish:
   rm -rf tmp/release
 
 [group: 'dev']
+readme:
+  present --in-place README.md
+
+[group: 'dev']
 run *args:
   cargo run {{ args }}
 
