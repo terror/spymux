@@ -188,7 +188,7 @@ impl App {
       return;
     }
 
-    if self.selected_pane_index().is_some() {
+    if self.selected_pane().is_some() {
       return;
     }
 
@@ -197,16 +197,9 @@ impl App {
     }
   }
 
-  fn focus_pane(&mut self, pane_id: &str) -> Result {
-    let Some(pane) = self.tmux.panes.iter().find(|pane| pane.id == pane_id)
-    else {
-      return Ok(());
-    };
-
+  fn focus_pane(&mut self, pane: &Pane) -> Result {
     Tmux::focus_pane(pane)?;
-
     self.selected_pane_id = Some(pane.id.clone());
-
     Ok(())
   }
 
@@ -229,10 +222,8 @@ impl App {
           self.move_selection(Movement::Right)?;
         }
         KeyCode::Enter => {
-          if let Some(index) = self.selected_pane_index()
-            && let Some(pane) = self.tmux.panes.get(index)
-          {
-            return Ok(Some(Action::FocusPane(pane.id.clone())));
+          if let Some(pane) = self.selected_pane() {
+            return Ok(Some(Action::FocusPane(pane)));
           }
         }
         _ => {}
@@ -291,7 +282,16 @@ impl App {
       return Ok(());
     }
 
-    let Some(current_index) = self.selected_pane_index() else {
+    let Some(selected_id) = self.selected_pane_id.as_deref() else {
+      return Ok(());
+    };
+
+    let Some(current_index) = self
+      .tmux
+      .panes
+      .iter()
+      .position(|pane| pane.id == selected_id)
+    else {
       return Ok(());
     };
 
@@ -445,8 +445,8 @@ impl App {
         if let Some(action) = self.handle_event(event)? {
           match action {
             Action::Quit => break,
-            Action::FocusPane(pane_id) => {
-              self.focus_pane(&pane_id)?;
+            Action::FocusPane(pane) => {
+              self.focus_pane(&pane)?;
             }
           }
         }
@@ -462,14 +462,15 @@ impl App {
     }
   }
 
-  fn selected_pane_index(&self) -> Option<usize> {
+  fn selected_pane(&self) -> Option<Pane> {
     let selected_id = self.selected_pane_id.as_deref()?;
 
     self
       .tmux
       .panes
       .iter()
-      .position(|pane| pane.id == selected_id)
+      .find(|pane| pane.id == selected_id)
+      .cloned()
   }
 
   fn slice_text_from(text: &Text<'static>, cursor: RowCursor) -> Text<'static> {
