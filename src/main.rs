@@ -1,6 +1,6 @@
 use {
   ansi_to_tui::IntoText,
-  anyhow::{Error, bail},
+  anyhow::{Context, Error, anyhow, bail},
   app::App,
   arguments::Arguments,
   clap::Parser,
@@ -15,6 +15,8 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  instance::Instance,
+  options::Options,
   pane::Pane,
   ratatui::{
     Terminal,
@@ -28,11 +30,13 @@ use {
   std::{
     backtrace::BacktraceStatus,
     borrow::Cow,
-    env,
-    io::{self, IsTerminal, Stdout},
-    process::{self, Command, Output},
+    env, fs,
+    io::{self, IsTerminal, Stdout, Write},
+    path::Path,
+    process::{self, Command, Output, Stdio},
     time::{Duration, Instant},
   },
+  subcommand::Subcommand,
   terminal_guard::TerminalGuard,
   tmux::Tmux,
   unicode_width::UnicodeWidthChar,
@@ -44,15 +48,18 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod instance;
+mod options;
 mod pane;
 mod row_cursor;
+mod subcommand;
 mod terminal_guard;
 mod tmux;
 
 fn main() {
   let arguments = Arguments::parse();
 
-  if let Err(error) = arguments.run() {
+  if let Err(error) = arguments.clone().run() {
     let use_color = io::stderr().is_terminal() && arguments.color_output();
 
     if use_color {
