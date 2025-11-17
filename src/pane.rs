@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 pub(crate) struct Pane {
   pub(crate) command: String,
   #[serde(default)]
@@ -31,14 +31,54 @@ impl Pane {
   }
 
   pub(crate) fn title(&self) -> String {
-    let descriptor = self.descriptor();
-
     let command = self.command.trim();
 
     if command.is_empty() {
-      descriptor
-    } else {
-      format!("{descriptor} ({command})")
+      return self.descriptor();
     }
+
+    format!("{} ({command})", self.descriptor())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn descriptor_displays_session_window_and_index() {
+    let pane = Pane {
+      index: 1,
+      session: "session".into(),
+      window_index: 2,
+      ..Default::default()
+    };
+
+    assert_eq!(pane.descriptor(), "session:2.1");
+  }
+
+  #[test]
+  fn title_appends_command_when_present() {
+    let pane = Pane {
+      command: "bash".into(),
+      index: 1,
+      session: "session".into(),
+      window_index: 2,
+      ..Default::default()
+    };
+
+    assert_eq!(pane.title(), "session:2.1 (bash)");
+  }
+
+  #[test]
+  fn title_falls_back_to_descriptor_when_command_blank() {
+    let pane = Pane {
+      index: 1,
+      session: "session".into(),
+      window_index: 2,
+      ..Default::default()
+    };
+
+    assert_eq!(pane.title(), "session:2.1");
   }
 }
