@@ -60,14 +60,14 @@ impl App {
       keys: "left click",
     },
   ];
-  const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
   fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
-    let width = width.min(area.width);
-    let height = height.min(area.height);
+    let (width, height) = (width.min(area.width), height.min(area.height));
 
-    let x_offset = area.width.saturating_sub(width) / 2;
-    let y_offset = area.height.saturating_sub(height) / 2;
+    let (x_offset, y_offset) = (
+      area.width.saturating_sub(width) / 2,
+      area.height.saturating_sub(height) / 2,
+    );
 
     Rect::new(
       area.x.saturating_add(x_offset),
@@ -549,7 +549,9 @@ impl App {
     loop {
       self.tick()?;
 
-      let timeout = Self::REFRESH_INTERVAL
+      let timeout = self
+        .config
+        .refresh_rate
         .checked_sub(self.last_refresh.elapsed())
         .unwrap_or(Duration::from_millis(0));
 
@@ -635,7 +637,7 @@ impl App {
   }
 
   fn tick(&mut self) -> Result {
-    if self.last_refresh.elapsed() >= Self::REFRESH_INTERVAL {
+    if self.last_refresh.elapsed() >= self.config.refresh_rate {
       self.refresh_tmux()?;
     }
 
