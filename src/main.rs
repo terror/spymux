@@ -34,6 +34,7 @@ use {
     borrow::Cow,
     env,
     io::{self, IsTerminal, Stdout, Write},
+    num::NonZeroU64,
     process::{self, Command, Output, Stdio},
     time::{Duration, Instant},
   },
