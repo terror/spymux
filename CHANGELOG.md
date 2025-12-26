@@ -8,6 +8,8 @@
 
 ### Misc
 
+- Add standalone `publish` script ([#30](https://github.com/terror/spymux/pull/30) by [terror](https://github.com/terror))
+- Avoid reliance on nightly rust toolchain ([#29](https://github.com/terror/spymux/pull/29) by [terror](https://github.com/terror))
 - Update dependencies ([#27](https://github.com/terror/spymux/pull/27) by [terror](https://github.com/terror))
 - Cover pane functions with tests ([#26](https://github.com/terror/spymux/pull/26) by [terror](https://github.com/terror))
 
