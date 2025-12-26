@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.2](https://github.com/terror/spymux/releases/tag/0.1.2) - 2025-12-26
+
+### Added
+
+- Add `--refresh-rate` option ([#25](https://github.com/terror/spymux/pull/25) by [terror](https://github.com/terror))
+
+### Misc
+
+- Update dependencies ([#27](https://github.com/terror/spymux/pull/27) by [terror](https://github.com/terror))
+- Cover pane functions with tests ([#26](https://github.com/terror/spymux/pull/26) by [terror](https://github.com/terror))
+
 ## [0.1.1](https://github.com/terror/spymux/releases/tag/0.1.1) - 2025-11-14
 
 ### Added
