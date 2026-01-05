@@ -53,6 +53,11 @@ Otherwise, see below for the complete package list:
   </tbody>
 </table>
 
+### Pre-built binaries
+
+Pre-built binaries for Linux, MacOS, and Windows can be found on
+[the releases page](https://github.com/terror/spymux/releases).
+
 ## Usage
 
 **spymux** is very simple to use, once installed you should be able to invoke the
