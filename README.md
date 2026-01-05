@@ -56,7 +56,7 @@ Otherwise, see below for the complete package list:
 ### Pre-built binaries
 
 Pre-built binaries for Linux, MacOS, and Windows can be found on
-[the releases page](https://github.com/terror/swab/releases).
+[the releases page](https://github.com/terror/spymux/releases).
 
 ## Usage
 
