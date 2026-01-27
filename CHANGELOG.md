@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/terror/spymux/releases/tag/0.1.3) - 2026-01-26
+
+### Added
+
+- Allow filtering panes by command (#33)
+
+### Misc
+
+- Add dependabot workflow (#35)
+- Update dependencies (#34)
+- Mention pre-built binaries in readme (#32)
+
 ## [0.1.2](https://github.com/terror/spymux/releases/tag/0.1.2) - 2025-12-26
 
 ### Added

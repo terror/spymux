@@ -70,7 +70,7 @@ spymux
 We support a few configuration options, as seen below:
 
 ```present cargo run -- --help
-spymux 0.1.2
+spymux 0.1.3
 
 A centralized view for all of your tmux panes
 
