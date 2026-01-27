@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug, Default)]
 pub(crate) struct Tmux {
+  pub(crate) command_filter: Vec<String>,
   pub(crate) excluded_pane_ids: Vec<String>,
   pub(crate) include_escape_codes: bool,
   pub(crate) panes: Vec<Pane>,
@@ -38,10 +39,12 @@ impl Tmux {
 
   fn capture_with_runner(&mut self, runner: &dyn CommandRunner) -> Result {
     let excluded = &self.excluded_pane_ids;
+    let command_filter = &self.command_filter;
 
     self.panes = Self::list_panes(runner)?
       .into_iter()
       .filter(|pane| !excluded.contains(&pane.id))
+      .filter(|pane| Self::matches_command_filter(pane, command_filter))
       .map(|pane| self.capture_pane(pane, runner))
       .collect::<Result<Vec<_>>>()?;
 
@@ -100,8 +103,21 @@ impl Tmux {
     )
   }
 
-  pub(crate) fn new(config: Config) -> Self {
+  fn matches_command_filter(pane: &Pane, filter: &[String]) -> bool {
+    if filter.is_empty() {
+      return true;
+    }
+
+    let command = pane.command.trim();
+
+    filter
+      .iter()
+      .any(|f| command.eq_ignore_ascii_case(f.trim()))
+  }
+
+  pub(crate) fn new(config: &Config) -> Self {
     Self {
+      command_filter: config.command_filter.clone(),
       excluded_pane_ids: Vec::new(),
       include_escape_codes: config.color_output,
       panes: Vec::new(),
@@ -132,6 +148,10 @@ impl Tmux {
     }
 
     Ok(())
+  }
+
+  pub(crate) fn set_command_filter(&mut self, filter: Vec<String>) {
+    self.command_filter = filter;
   }
 }
 
@@ -288,7 +308,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -308,7 +328,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -347,7 +367,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -402,7 +422,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.exclude_pane_id("%1");
     tmux.capture_with_runner(&runner).unwrap();
@@ -437,7 +457,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -470,7 +490,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -503,7 +523,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     tmux.capture_with_runner(&runner).unwrap();
 
@@ -700,7 +720,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -715,7 +735,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -739,7 +759,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -764,7 +784,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -789,7 +809,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -809,7 +829,7 @@ mod tests {
       ..Default::default()
     };
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux.capture_with_runner(&runner).unwrap_err().to_string(),
@@ -834,7 +854,7 @@ mod tests {
       }
     }
 
-    let mut tmux = Tmux::new(Config::default());
+    let mut tmux = Tmux::new(&Config::default());
 
     assert_eq!(
       tmux
@@ -843,5 +863,147 @@ mod tests {
         .to_string(),
       "invalid utf-8 sequence of 1 bytes from index 0"
     );
+  }
+
+  #[test]
+  fn command_filter_includes_matching_panes() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "foo\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "bar\n".to_string());
+    capture_outputs.insert("session1:0.2".to_string(), "baz\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: format!(
+        "{}\n{}\n{}\n",
+        pane("session1", 0, 0, "%0", "nvim", ""),
+        pane("session1", 0, 1, "%1", "bash", ""),
+        pane("session1", 0, 2, "%2", "nvim", "")
+      ),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(&Config {
+      command_filter: vec!["nvim".to_string()],
+      ..Config::default()
+    });
+
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(tmux.panes.len(), 2);
+    assert!(tmux.panes.iter().all(|p| p.command == "nvim"));
+  }
+
+  #[test]
+  fn command_filter_multiple_commands() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "foo\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "bar\n".to_string());
+    capture_outputs.insert("session1:0.2".to_string(), "baz\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: format!(
+        "{}\n{}\n{}\n",
+        pane("session1", 0, 0, "%0", "nvim", ""),
+        pane("session1", 0, 1, "%1", "bash", ""),
+        pane("session1", 0, 2, "%2", "claude", "")
+      ),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(&Config {
+      command_filter: vec!["nvim".to_string(), "claude".to_string()],
+      ..Config::default()
+    });
+
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(tmux.panes.len(), 2);
+
+    let commands: Vec<_> =
+      tmux.panes.iter().map(|p| p.command.as_str()).collect();
+
+    assert!(commands.contains(&"nvim"));
+    assert!(commands.contains(&"claude"));
+  }
+
+  #[test]
+  fn command_filter_is_case_insensitive() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "foo\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: format!(
+        "{}\n",
+        pane("session1", 0, 0, "%0", "NvIm", "")
+      ),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(&Config {
+      command_filter: vec!["NVIM".to_string()],
+      ..Config::default()
+    });
+
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(tmux.panes.len(), 1);
+  }
+
+  #[test]
+  fn empty_command_filter_shows_all_panes() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "foo\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "bar\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: format!(
+        "{}\n{}\n",
+        pane("session1", 0, 0, "%0", "nvim", ""),
+        pane("session1", 0, 1, "%1", "bash", "")
+      ),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(&Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
+
+    assert_eq!(tmux.panes.len(), 2);
+  }
+
+  #[test]
+  fn set_command_filter_updates_filter() {
+    let mut capture_outputs = BTreeMap::new();
+
+    capture_outputs.insert("session1:0.0".to_string(), "foo\n".to_string());
+    capture_outputs.insert("session1:0.1".to_string(), "bar\n".to_string());
+
+    let runner = MockCommandRunner {
+      capture_outputs,
+      list_panes_output: format!(
+        "{}\n{}\n",
+        pane("session1", 0, 0, "%0", "nvim", ""),
+        pane("session1", 0, 1, "%1", "bash", "")
+      ),
+      ..Default::default()
+    };
+
+    let mut tmux = Tmux::new(&Config::default());
+
+    tmux.capture_with_runner(&runner).unwrap();
+    assert_eq!(tmux.panes.len(), 2);
+
+    tmux.set_command_filter(vec!["nvim".to_string()]);
+    tmux.capture_with_runner(&runner).unwrap();
+    assert_eq!(tmux.panes.len(), 1);
+    assert_eq!(tmux.panes[0].command, "nvim");
   }
 }

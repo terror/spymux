@@ -34,6 +34,7 @@ impl Arguments {
 
       App::new(Config {
         color_output: !self.options.no_colors,
+        command_filter: self.options.commands,
         refresh_rate,
       })?
       .run()

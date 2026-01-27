@@ -1,14 +1,10 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
-struct KeyBinding {
-  description: &'static str,
-  keys: &'static str,
-}
-
 #[derive(Debug)]
 pub(crate) struct App {
   config: Config,
+  filter_input: String,
+  filter_mode: bool,
   help_visible: bool,
   last_refresh: Instant,
   pane_regions: Vec<Rect>,
@@ -22,44 +18,68 @@ impl App {
   const HELP_KEY_COLUMN_WIDTH: usize = 18;
   const HELP_MIN_WIDTH: u16 = 32;
 
-  const KEY_BINDINGS: &'static [KeyBinding] = &[
-    KeyBinding {
+  const KEY_BINDINGS: &'static [Keybinding] = &[
+    Keybinding {
       description: "Move up",
       keys: "↑ / k",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move down",
       keys: "↓ / j",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move left",
       keys: "← / h",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move right",
       keys: "→ / l",
     },
-    KeyBinding {
+    Keybinding {
       description: "Focus highlighted pane",
       keys: "enter",
     },
-    KeyBinding {
+    Keybinding {
       description: "Hide highlighted pane",
       keys: "x",
     },
-    KeyBinding {
+    Keybinding {
+      description: "Filter by command",
+      keys: "/",
+    },
+    Keybinding {
+      description: "Clear filter",
+      keys: "c",
+    },
+    Keybinding {
       description: "Quit spymux",
       keys: "q / esc",
     },
-    KeyBinding {
+    Keybinding {
       description: "Toggle help",
       keys: "?",
     },
-    KeyBinding {
+    Keybinding {
       description: "Select clicked pane",
       keys: "left click",
     },
   ];
+
+  fn apply_filter(&mut self) -> Result {
+    let filter = if self.filter_input.is_empty() {
+      Vec::new()
+    } else {
+      self
+        .filter_input
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+    };
+
+    self.tmux.set_command_filter(filter);
+    self.refresh_tmux()
+  }
 
   fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let (width, height) = (width.min(area.width), height.min(area.height));
@@ -75,6 +95,12 @@ impl App {
       width,
       height,
     )
+  }
+
+  fn clear_filter(&mut self) -> Result {
+    self.filter_input.clear();
+    self.tmux.set_command_filter(Vec::new());
+    self.refresh_tmux()
   }
 
   fn clip_to_bottom(
@@ -268,6 +294,10 @@ impl App {
   }
 
   fn handle_event(&mut self, event: Event) -> Result<Option<Action>> {
+    if self.filter_mode {
+      return self.handle_filter_event(event);
+    }
+
     match event {
       Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
         KeyCode::Char('q') | KeyCode::Esc => {
@@ -278,6 +308,13 @@ impl App {
         }
         KeyCode::Char('x') => {
           self.hide_selected_pane();
+        }
+        KeyCode::Char('/') => {
+          self.filter_mode = true;
+          self.filter_input.clear();
+        }
+        KeyCode::Char('c') => {
+          self.clear_filter()?;
         }
         KeyCode::Char('h') | KeyCode::Left => {
           self.move_selection(Movement::Left)?;
@@ -302,6 +339,34 @@ impl App {
         self.handle_mouse_event(mouse_event)?;
       }
       _ => {}
+    }
+
+    Ok(None)
+  }
+
+  fn handle_filter_event(&mut self, event: Event) -> Result<Option<Action>> {
+    if let Event::Key(key) = event {
+      if key.kind != KeyEventKind::Press {
+        return Ok(None);
+      }
+
+      match key.code {
+        KeyCode::Esc => {
+          self.filter_mode = false;
+          self.filter_input.clear();
+        }
+        KeyCode::Enter => {
+          self.filter_mode = false;
+          self.apply_filter()?;
+        }
+        KeyCode::Backspace => {
+          self.filter_input.pop();
+        }
+        KeyCode::Char(c) => {
+          self.filter_input.push(c);
+        }
+        _ => {}
+      }
     }
 
     Ok(None)
@@ -424,7 +489,7 @@ impl App {
   pub(crate) fn new(config: Config) -> Result<Self> {
     let terminal = TerminalGuard::new()?;
 
-    let mut tmux = Tmux::new(config);
+    let mut tmux = Tmux::new(&config);
 
     if let Ok(pane_id) = env::var("TMUX_PANE") {
       tmux.exclude_pane_id(&pane_id);
@@ -434,12 +499,14 @@ impl App {
 
     Ok(Self {
       config,
+      filter_input: String::new(),
+      filter_mode: false,
+      help_visible: false,
       last_refresh: Instant::now(),
       pane_regions: Vec::new(),
       selected_pane: tmux.panes.first().cloned(),
       terminal,
       tmux,
-      help_visible: false,
     })
   }
 
@@ -703,13 +770,49 @@ impl App {
         }
       }
 
+      if self.filter_mode {
+        let filter_area = Rect::new(
+          body_area.x,
+          body_area.height.saturating_sub(1),
+          body_area.width,
+          1,
+        );
+
+        let filter_text = format!("Filter: {}_", self.filter_input);
+
+        let filter_widget =
+          Paragraph::new(filter_text).style(Style::default().fg(Color::Yellow));
+
+        frame.render_widget(Clear, filter_area);
+        frame.render_widget(filter_widget, filter_area);
+      } else if !self.tmux.command_filter.is_empty() {
+        let filter_area = Rect::new(
+          body_area.x,
+          body_area.height.saturating_sub(1),
+          body_area.width,
+          1,
+        );
+
+        let filter_text = format!(
+          "Filter: {} (c to clear)",
+          self.tmux.command_filter.join(",")
+        );
+
+        let filter_widget = Paragraph::new(filter_text)
+          .style(Style::default().fg(Color::DarkGray));
+
+        frame.render_widget(Clear, filter_area);
+        frame.render_widget(filter_widget, filter_area);
+      }
+
       if self.help_visible && body_area.width > 0 && body_area.height > 0 {
         let help_text = Self::help_text();
-        let line_count = help_text.lines.len();
-        let max_line_width =
-          help_text.lines.iter().map(Line::width).max().unwrap_or(0);
 
-        let help_area = Self::help_area(body_area, line_count, max_line_width);
+        let help_area = Self::help_area(
+          body_area,
+          help_text.lines.len(),
+          help_text.lines.iter().map(Line::width).max().unwrap_or(0),
+        );
 
         let help_widget = Paragraph::new(help_text)
           .block(
