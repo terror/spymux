@@ -16,6 +16,7 @@ use {
     style::Stylize,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
   },
+  keybinding::Keybinding,
   movement::Movement,
   options::Options,
   pane::Pane,
@@ -51,6 +52,7 @@ mod app;
 mod arguments;
 mod command_runner;
 mod config;
+mod keybinding;
 mod movement;
 mod options;
 mod pane;

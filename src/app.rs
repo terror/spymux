@@ -1,11 +1,5 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
-struct KeyBinding {
-  description: &'static str,
-  keys: &'static str,
-}
-
 #[derive(Debug)]
 pub(crate) struct App {
   config: Config,
@@ -24,48 +18,48 @@ impl App {
   const HELP_KEY_COLUMN_WIDTH: usize = 18;
   const HELP_MIN_WIDTH: u16 = 32;
 
-  const KEY_BINDINGS: &'static [KeyBinding] = &[
-    KeyBinding {
+  const KEY_BINDINGS: &'static [Keybinding] = &[
+    Keybinding {
       description: "Move up",
       keys: "↑ / k",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move down",
       keys: "↓ / j",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move left",
       keys: "← / h",
     },
-    KeyBinding {
+    Keybinding {
       description: "Move right",
       keys: "→ / l",
     },
-    KeyBinding {
+    Keybinding {
       description: "Focus highlighted pane",
       keys: "enter",
     },
-    KeyBinding {
+    Keybinding {
       description: "Hide highlighted pane",
       keys: "x",
     },
-    KeyBinding {
+    Keybinding {
       description: "Filter by command",
       keys: "/",
     },
-    KeyBinding {
+    Keybinding {
       description: "Clear filter",
       keys: "c",
     },
-    KeyBinding {
+    Keybinding {
       description: "Quit spymux",
       keys: "q / esc",
     },
-    KeyBinding {
+    Keybinding {
       description: "Toggle help",
       keys: "?",
     },
-    KeyBinding {
+    Keybinding {
       description: "Select clicked pane",
       keys: "left click",
     },
@@ -813,11 +807,12 @@ impl App {
 
       if self.help_visible && body_area.width > 0 && body_area.height > 0 {
         let help_text = Self::help_text();
-        let line_count = help_text.lines.len();
-        let max_line_width =
-          help_text.lines.iter().map(Line::width).max().unwrap_or(0);
 
-        let help_area = Self::help_area(body_area, line_count, max_line_width);
+        let help_area = Self::help_area(
+          body_area,
+          help_text.lines.len(),
+          help_text.lines.iter().map(Line::width).max().unwrap_or(0),
+        );
 
         let help_widget = Paragraph::new(help_text)
           .block(
