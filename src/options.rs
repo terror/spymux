@@ -2,6 +2,14 @@ use super::*;
 
 #[derive(Debug, Clone, Parser)]
 pub(crate) struct Options {
+  #[clap(
+    short,
+    long,
+    value_name = "COMMAND",
+    value_delimiter = ',',
+    help = "Filter panes by command (comma-separated)"
+  )]
+  pub(crate) commands: Vec<String>,
   #[clap(short, long, help = "Disable colored output")]
   pub(crate) no_colors: bool,
   #[clap(
