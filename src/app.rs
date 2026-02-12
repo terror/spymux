@@ -329,7 +329,7 @@ impl App {
           self.move_selection(Movement::Right)?;
         }
         KeyCode::Enter => {
-          if let Some(pane) = self.selected_pane() {
+          if let Some(pane) = self.selected_pane.clone() {
             return Ok(Some(Action::FocusPane(pane)));
           }
         }
@@ -643,10 +643,6 @@ impl App {
     if let Some(pane) = self.tmux.panes.get(pane_index) {
       self.selected_pane = Some(pane.clone());
     }
-  }
-
-  fn selected_pane(&self) -> Option<Pane> {
-    self.selected_pane.clone()
   }
 
   fn slice_text_from(text: &Text<'static>, cursor: RowCursor) -> Text<'static> {
