@@ -754,7 +754,7 @@ impl App {
             .as_ref()
             .is_some_and(|selected| selected.id == pane.id);
 
-          if is_selected {
+          if is_selected && self.config.color_output {
             block = block.border_style(self.config.style(Color::Cyan));
           }
 
