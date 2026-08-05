@@ -61,12 +61,13 @@ impl Tmux {
   }
 
   fn focus_pane_with_runner(pane: &Pane, runner: &dyn CommandRunner) -> Result {
-    Self::select_window_with_runner(
-      &format!("{}:{}", pane.session, pane.window_index),
-      runner,
-    )?;
+    let output = runner.run(&["switch-client", "-t", &pane.id])?;
 
-    Self::select_pane_with_runner(&pane.id, runner)
+    if !output.status.success() {
+      bail!("failed to focus tmux pane");
+    }
+
+    Ok(())
   }
 
   fn list_panes(runner: &dyn CommandRunner) -> Result<Vec<Pane>> {
@@ -124,32 +125,6 @@ impl Tmux {
     }
   }
 
-  fn select_pane_with_runner(
-    pane_id: &str,
-    runner: &dyn CommandRunner,
-  ) -> Result {
-    let output = runner.run(&["select-pane", "-t", pane_id])?;
-
-    if !output.status.success() {
-      bail!("failed to select tmux pane");
-    }
-
-    Ok(())
-  }
-
-  fn select_window_with_runner(
-    target: &str,
-    runner: &dyn CommandRunner,
-  ) -> Result {
-    let output = runner.run(&["select-window", "-t", target])?;
-
-    if !output.status.success() {
-      bail!("failed to select tmux window");
-    }
-
-    Ok(())
-  }
-
   pub(crate) fn set_command_filter(&mut self, filter: Vec<String>) {
     self.command_filter = filter;
   }
@@ -168,10 +143,8 @@ mod tests {
     capture_successes: BTreeMap<String, bool>,
     list_panes_output: String,
     list_panes_success: bool,
-    select_pane_success: bool,
-    select_window_success: bool,
-    selected_panes: RefCell<Vec<String>>,
-    selected_windows: RefCell<Vec<String>>,
+    switch_client_success: bool,
+    switched_panes: RefCell<Vec<String>>,
   }
 
   impl Default for MockCommandRunner {
@@ -181,10 +154,8 @@ mod tests {
         capture_successes: BTreeMap::new(),
         list_panes_output: String::new(),
         list_panes_success: true,
-        select_pane_success: true,
-        select_window_success: true,
-        selected_panes: RefCell::new(Vec::new()),
-        selected_windows: RefCell::new(Vec::new()),
+        switch_client_success: true,
+        switched_panes: RefCell::new(Vec::new()),
       }
     }
   }
@@ -214,24 +185,13 @@ mod tests {
             stderr: vec![],
           })
         }
-        "select-pane" => {
+        "switch-client" => {
           let target = arguments[2].to_string();
 
-          self.selected_panes.borrow_mut().push(target);
+          self.switched_panes.borrow_mut().push(target);
 
           Ok(Output {
-            status: exit_status(self.select_pane_success),
-            stdout: vec![],
-            stderr: vec![],
-          })
-        }
-        "select-window" => {
-          let target = arguments[2].to_string();
-
-          self.selected_windows.borrow_mut().push(target);
-
-          Ok(Output {
-            status: exit_status(self.select_window_success),
+            status: exit_status(self.switch_client_success),
             stdout: vec![],
             stderr: vec![],
           })
@@ -242,12 +202,8 @@ mod tests {
   }
 
   impl MockCommandRunner {
-    fn selected_panes(&self) -> Vec<String> {
-      self.selected_panes.borrow().clone()
-    }
-
-    fn selected_windows(&self) -> Vec<String> {
-      self.selected_windows.borrow().clone()
+    fn switched_panes(&self) -> Vec<String> {
+      self.switched_panes.borrow().clone()
     }
   }
 
@@ -584,31 +540,7 @@ mod tests {
   }
 
   #[test]
-  fn select_pane_with_runner_invokes_tmux() {
-    let runner = MockCommandRunner::default();
-
-    Tmux::select_pane_with_runner("%42", &runner).unwrap();
-
-    assert_eq!(runner.selected_panes(), vec!["%42".to_string()]);
-  }
-
-  #[test]
-  fn select_pane_with_runner_errors_on_failure() {
-    let runner = MockCommandRunner {
-      select_pane_success: false,
-      ..Default::default()
-    };
-
-    assert_eq!(
-      Tmux::select_pane_with_runner("%1", &runner)
-        .unwrap_err()
-        .to_string(),
-      "failed to select tmux pane"
-    );
-  }
-
-  #[test]
-  fn focus_pane_with_runner_selects_window_and_pane() {
+  fn focus_pane_with_runner_switches_client_to_pane() {
     let runner = MockCommandRunner::default();
 
     let pane = Pane {
@@ -623,14 +555,13 @@ mod tests {
 
     Tmux::focus_pane_with_runner(&pane, &runner).unwrap();
 
-    assert_eq!(runner.selected_windows(), vec!["mysession:3".to_string()]);
-    assert_eq!(runner.selected_panes(), vec!["%12".to_string()]);
+    assert_eq!(runner.switched_panes(), vec!["%12".to_string()]);
   }
 
   #[test]
-  fn focus_pane_with_runner_propagates_window_errors() {
+  fn focus_pane_with_runner_errors_on_failure() {
     let runner = MockCommandRunner {
-      select_window_success: false,
+      switch_client_success: false,
       ..Default::default()
     };
 
@@ -648,7 +579,7 @@ mod tests {
       Tmux::focus_pane_with_runner(&pane, &runner)
         .unwrap_err()
         .to_string(),
-      "failed to select tmux window"
+      "failed to focus tmux pane"
     );
   }
 
