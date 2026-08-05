@@ -4,13 +4,14 @@ use super::*;
 #[clap(
   about,
   author,
+  color = clap::ColorChoice::Never,
   version,
   help_template = "\
 {before-help}{name} {version}
 
 {about}
 
-\x1b[1;4mUsage\x1b[0m: {usage}
+Usage: {usage}
 
 {all-args}{after-help}
 "
@@ -39,5 +40,18 @@ impl Arguments {
       })?
       .run()
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn no_colors_help_contains_no_ansi_escapes() {
+    let error = Arguments::try_parse_from(["spymux", "--no-colors", "--help"])
+      .unwrap_err();
+
+    assert!(!error.to_string().contains('\x1b'));
   }
 }
