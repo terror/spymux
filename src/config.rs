@@ -12,7 +12,7 @@ impl Config {
     if self.color_output {
       Style::default().fg(color)
     } else {
-      Style::default()
+      Style::reset()
     }
   }
 }
@@ -39,6 +39,11 @@ mod tests {
 
     config.color_output = false;
 
-    assert_eq!(config.style(Color::Cyan), Style::default());
+    assert_eq!(
+      Style::default()
+        .fg(Color::Cyan)
+        .patch(config.style(Color::Cyan)),
+      Style::reset()
+    );
   }
 }
