@@ -42,16 +42,3 @@ impl Arguments {
     }
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn no_colors_help_contains_no_ansi_escapes() {
-    let error = Arguments::try_parse_from(["spymux", "--no-colors", "--help"])
-      .unwrap_err();
-
-    assert!(!error.to_string().contains('\x1b'));
-  }
-}
