@@ -4,13 +4,14 @@ use super::*;
 #[clap(
   about,
   author,
+  color = clap::ColorChoice::Never,
   version,
   help_template = "\
 {before-help}{name} {version}
 
 {about}
 
-\x1b[1;4mUsage\x1b[0m: {usage}
+Usage: {usage}
 
 {all-args}{after-help}
 "

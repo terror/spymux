@@ -754,8 +754,8 @@ impl App {
             .as_ref()
             .is_some_and(|selected| selected.id == pane.id);
 
-          if is_selected {
-            block = block.border_style(Style::default().fg(Color::Cyan));
+          if is_selected && self.config.color_output {
+            block = block.border_style(self.config.style(Color::Cyan));
           }
 
           let widget = Paragraph::new(clipped_content)
@@ -777,7 +777,7 @@ impl App {
         let filter_text = format!("Filter: {}_", self.filter_input);
 
         let filter_widget =
-          Paragraph::new(filter_text).style(Style::default().fg(Color::Yellow));
+          Paragraph::new(filter_text).style(self.config.style(Color::Yellow));
 
         frame.render_widget(Clear, filter_area);
         frame.render_widget(filter_widget, filter_area);
@@ -794,8 +794,8 @@ impl App {
           self.tmux.command_filter.join(",")
         );
 
-        let filter_widget = Paragraph::new(filter_text)
-          .style(Style::default().fg(Color::DarkGray));
+        let filter_widget =
+          Paragraph::new(filter_text).style(self.config.style(Color::DarkGray));
 
         frame.render_widget(Clear, filter_area);
         frame.render_widget(filter_widget, filter_area);
