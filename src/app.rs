@@ -165,9 +165,7 @@ impl App {
 
     let mut current_width = 0usize;
 
-    for line_index in 0..line_limit {
-      let line = &text.lines[line_index];
-
+    for (line_index, line) in text.lines.iter().enumerate().take(line_limit) {
       if line.spans.is_empty() {
         current_width = 0;
 
